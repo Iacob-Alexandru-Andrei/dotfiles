@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 1 ]; then
+  printf 'usage: %s <ssh-host>\n' "$0" >&2
+  exit 2
+fi
+
+host=$1
+repo_url='git@github.com:Iacob-Alexandru-Andrei/dotfiles.git'
+
+ssh "$host" "set -eu
+if [ ! -d \"\$HOME/.dotfiles/.git\" ]; then
+  git clone '$repo_url' \"\$HOME/.dotfiles\"
+else
+  git -C \"\$HOME/.dotfiles\" pull --ff-only
+fi
+\"\$HOME/.dotfiles/install.sh\""
