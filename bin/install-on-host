@@ -13,6 +13,7 @@ ssh "$host" "set -eu
 if [ ! -d \"\$HOME/.dotfiles/.git\" ]; then
   git clone '$repo_url' \"\$HOME/.dotfiles\"
 else
+  git -C \"\$HOME/.dotfiles\" remote set-url origin '$repo_url'
   git -C \"\$HOME/.dotfiles\" pull --ff-only
 fi
 \"\$HOME/.dotfiles/install.sh\""
