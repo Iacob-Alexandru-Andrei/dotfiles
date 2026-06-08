@@ -37,5 +37,7 @@ link_file() {
 
 link_file "$repo_dir/zsh/.zshrc" "$HOME/.zshrc"
 link_file "$repo_dir/zim/.zimrc" "$HOME/.zimrc"
+link_file "$repo_dir/tmux/.tmux.conf" "$HOME/.tmux.conf"
 
 printf '\nDone. Open a new zsh session or run: exec zsh\n'
+printf 'For an existing tmux server, run: tmux source-file ~/.tmux.conf\n'

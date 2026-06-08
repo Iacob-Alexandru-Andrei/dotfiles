@@ -1,6 +1,6 @@
 # Dotfiles
 
-Portable zsh prompt and shell setup.
+Portable zsh prompt, shell setup, and tmux defaults.
 
 ## Local install
 
@@ -9,7 +9,16 @@ git clone git@github.com:Iacob-Alexandru-Andrei/dotfiles.git ~/.dotfiles
 ~/.dotfiles/install.sh
 ```
 
-The installer backs up existing `~/.zshrc` and `~/.zimrc` files before linking them to this repo.
+The installer backs up existing `~/.zshrc`, `~/.zimrc`, and `~/.tmux.conf`
+files before linking them to this repo.
+
+The tmux config enables mouse/trackpad scrolling, a larger scrollback history,
+friendlier pane/window defaults, and a readable status line. New tmux servers
+load `~/.tmux.conf` automatically. Existing tmux servers need a reload:
+
+```sh
+tmux source-file ~/.tmux.conf
+```
 
 ## Install on an SSH host
 
