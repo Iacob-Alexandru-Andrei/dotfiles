@@ -9,6 +9,36 @@ fi
 host=$1
 repo_url='https://github.com/Iacob-Alexandru-Andrei/dotfiles.git'
 
+install_terminfo() {
+  term_name=${TERM:-}
+
+  [ -n "$term_name" ] || return 0
+
+  case $term_name in
+    *[!A-Za-z0-9._+-]*)
+      printf 'skipping terminfo install for unusual TERM: %s\n' "$term_name" >&2
+      return 0
+      ;;
+  esac
+
+  command -v infocmp >/dev/null 2>&1 || return 0
+  infocmp -x "$term_name" >/dev/null 2>&1 || return 0
+
+  if ssh "$host" "infocmp '$term_name' >/dev/null 2>&1"; then
+    return 0
+  fi
+
+  if ! ssh "$host" "command -v tic >/dev/null 2>&1"; then
+    printf 'remote host is missing tic; install ncurses terminfo or run tmux with TERM=xterm-256color\n' >&2
+    return 0
+  fi
+
+  printf 'installing terminfo on %s: %s\n' "$host" "$term_name"
+  infocmp -x "$term_name" | ssh "$host" "tic -x -"
+}
+
+install_terminfo
+
 ssh "$host" "set -eu
 if [ ! -d \"\$HOME/.dotfiles/.git\" ]; then
   git clone '$repo_url' \"\$HOME/.dotfiles\"
@@ -16,4 +46,9 @@ else
   git -C \"\$HOME/.dotfiles\" remote set-url origin '$repo_url'
   git -C \"\$HOME/.dotfiles\" pull --ff-only
 fi
-\"\$HOME/.dotfiles/install.sh\""
+\"\$HOME/.dotfiles/install.sh\"
+if command -v tmux >/dev/null 2>&1; then
+  if TERM=\${TERM:-xterm-256color} tmux has-session 2>/dev/null || TERM=xterm-256color tmux has-session 2>/dev/null; then
+    TERM=\${TERM:-xterm-256color} tmux source-file \"\$HOME/.tmux.conf\" || TERM=xterm-256color tmux source-file \"\$HOME/.tmux.conf\"
+  fi
+fi"
