@@ -7,7 +7,7 @@ if [ "$#" -ne 1 ]; then
 fi
 
 host=$1
-repo_url='git@github.com:Iacob-Alexandru-Andrei/dotfiles.git'
+repo_url='https://github.com/Iacob-Alexandru-Andrei/dotfiles.git'
 
 ssh "$host" "set -eu
 if [ ! -d \"\$HOME/.dotfiles/.git\" ]; then

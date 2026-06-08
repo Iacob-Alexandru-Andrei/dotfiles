@@ -5,7 +5,7 @@ Portable zsh prompt, shell setup, and tmux defaults.
 ## Local install
 
 ```sh
-git clone git@github.com:Iacob-Alexandru-Andrei/dotfiles.git ~/.dotfiles
+git clone https://github.com/Iacob-Alexandru-Andrei/dotfiles.git ~/.dotfiles
 ~/.dotfiles/install.sh
 ```
 
@@ -31,7 +31,7 @@ From a machine that already has this repo:
 Or run directly on the remote machine:
 
 ```sh
-git clone git@github.com:Iacob-Alexandru-Andrei/dotfiles.git ~/.dotfiles
+git clone https://github.com/Iacob-Alexandru-Andrei/dotfiles.git ~/.dotfiles
 ~/.dotfiles/install.sh
 ```
 
