@@ -177,8 +177,14 @@ install_copilot_cli() {
   fi
 
   if ! have npm; then
-    info "npm not found; skipping Copilot CLI install"
-    return 0
+    if [ "$install_apt" -eq 1 ]; then
+      apt_install_missing
+    fi
+
+    if ! have npm; then
+      info "npm not found; skipping Copilot CLI install"
+      return 0
+    fi
   fi
 
   info "installing GitHub Copilot CLI with npm user prefix"
@@ -296,6 +302,27 @@ Host github-company
 EOF
 }
 
+ensure_github_known_host() {
+  known_hosts="$HOME/.ssh/known_hosts"
+
+  mkdir -p "$HOME/.ssh"
+  chmod 700 "$HOME/.ssh"
+  touch "$known_hosts"
+  chmod 600 "$known_hosts"
+
+  if ssh-keygen -F github.com -f "$known_hosts" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if ! have ssh-keyscan; then
+    info "ssh-keyscan not found; skipping GitHub known_hosts setup"
+    return 0
+  fi
+
+  info "adding github.com to known_hosts"
+  ssh-keyscan github.com >> "$known_hosts" 2>/dev/null
+}
+
 run_dotfiles_install() {
   if [ "$with_dotfiles" -eq 0 ]; then
     return 0
@@ -348,6 +375,7 @@ install_uv
 install_pre_commit
 install_copilot_cli
 install_github_hosts
+ensure_github_known_host
 install_copilot_skills
 run_dotfiles_install
 healthcheck

@@ -43,6 +43,12 @@ fi
 grep -q 'BEGIN dotfiles ubuntu-agent github hosts' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must manage SSH host aliases in a marked block"
 
+grep -q 'ensure_github_known_host' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must idempotently add GitHub to known_hosts"
+
+grep -q 'ssh-keyscan github.com' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must fetch the GitHub SSH host key before private clones"
+
 grep -q 'install_copilot_skills' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must install Copilot skills separately"
 
