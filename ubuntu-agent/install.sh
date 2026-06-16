@@ -161,6 +161,40 @@ install_pre_commit() {
   fi
 }
 
+install_github_cli() {
+  if have gh; then
+    return 0
+  fi
+
+  if [ "$install_apt" -eq 0 ]; then
+    info "gh not found; rerun without --skip-apt to install GitHub CLI"
+    return 0
+  fi
+
+  have sudo || {
+    info "sudo not found; skipping GitHub CLI installation"
+    return 0
+  }
+
+  have curl || {
+    info "curl not found; skipping GitHub CLI installation"
+    return 0
+  }
+
+  info "installing GitHub CLI"
+  sudo mkdir -p /usr/share/keyrings
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg |
+    sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg >/dev/null
+  sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+
+  arch=$(dpkg --print-architecture)
+  printf 'deb [arch=%s signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\n' "$arch" |
+    sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+
+  sudo apt-get update
+  sudo apt-get install -y gh
+}
+
 clone_or_update_repo() {
   repo_url=$1
   target_dir=$2
@@ -377,6 +411,7 @@ ensure_path_block
 apt_install_missing
 install_uv
 install_pre_commit
+install_github_cli
 install_copilot_cli
 install_github_hosts
 ensure_github_known_host

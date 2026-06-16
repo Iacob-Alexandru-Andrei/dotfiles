@@ -79,6 +79,16 @@ grep -q 'pipx_package_installed uv' "$repo_dir/ubuntu-agent/install.sh" ||
 grep -q 'pipx_package_installed pre-commit' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "pre-commit install must skip existing pipx pre-commit package even before PATH refresh"
 
+grep -q 'install_github_cli' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must install GitHub CLI"
+
+grep -q 'cli.github.com/packages' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "GitHub CLI installer must use the official GitHub CLI apt repository"
+
+if grep -q 'pipx install amlt\\|pip install amlt\\|uv tool install amlt' "$repo_dir/ubuntu-agent/install.sh"; then
+  fail "ubuntu-agent installer must not install AMLT yet"
+fi
+
 grep -q 'find "$skills_root" -mindepth 2 -maxdepth 2 -name SKILL.md' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "skill installer must only discover SKILL.md files, not run repo install scripts"
 
