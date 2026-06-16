@@ -2,16 +2,16 @@
 set -eu
 
 with_dotfiles=0
-install_apt=0
+install_apt=1
 
 usage() {
   cat <<'EOF' >&2
-usage: ubuntu-agent/install.sh [--with-dotfiles] [--install-apt]
+usage: ubuntu-agent/install.sh [--with-dotfiles] [--install-apt] [--skip-apt]
 
 Sets up an Ubuntu host for agent/Copilot work without changing the default
 dotfiles installer. Existing tools and config are detected and left in place.
-Missing apt packages are reported by default and installed only with
---install-apt.
+Missing apt packages are installed by default. Use --skip-apt to only report
+missing packages.
 EOF
 }
 
@@ -23,6 +23,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --install-apt)
       install_apt=1
+      shift
+      ;;
+    --skip-apt)
+      install_apt=0
       shift
       ;;
     -h|--help)

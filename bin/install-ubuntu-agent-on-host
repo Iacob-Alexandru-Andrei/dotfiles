@@ -8,7 +8,7 @@ setup_ref=$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD 2>/dev/null ||
 personal_key=''
 work_key=''
 with_dotfiles=1
-install_apt=0
+install_apt=1
 
 usage() {
   cat <<'EOF' >&2
@@ -18,7 +18,8 @@ Options:
   --personal-key PATH   Copy PATH to remote ~/.ssh/github-personal
   --work-key PATH       Copy PATH to remote ~/.ssh/github-company
   --skip-dotfiles       Do not run the normal ~/.dotfiles/install.sh on remote
-  --install-apt         Allow the remote installer to install missing apt packages
+  --skip-apt            Do not install missing Ubuntu packages
+  --install-apt         Install missing Ubuntu packages (default; kept for compatibility)
   -h, --help            Show this help
 
 This script never commits, prints, or stores private keys in the dotfiles repo.
@@ -44,6 +45,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --install-apt)
       install_apt=1
+      shift
+      ;;
+    --skip-apt)
+      install_apt=0
       shift
       ;;
     -h|--help)
@@ -135,7 +140,9 @@ if [ "$with_dotfiles" -eq 1 ]; then
   remote_args='--with-dotfiles'
 fi
 
-if [ "$install_apt" -eq 1 ]; then
+if [ "$install_apt" -eq 0 ]; then
+  remote_args="$remote_args --skip-apt"
+else
   remote_args="$remote_args --install-apt"
 fi
 

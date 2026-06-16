@@ -54,5 +54,5 @@ installer. From a machine that already has this repo:
 ```
 
 See [`ubuntu-agent/README.md`](ubuntu-agent/README.md) for details. Missing apt
-packages are reported by default; pass `--install-apt` only when you want the
-script to install them.
+packages are installed by default; pass `--skip-apt` if you only want the script
+to report them.

@@ -34,9 +34,8 @@ copying your local `~/.copilot` directories:
 - Superpowers from the official Copilot plugin marketplace:
   `superpowers@superpowers-marketplace`
 
-The remote installer reports missing apt packages by default. Add
-`--install-apt` only when you want it to install missing Ubuntu packages with
-`sudo apt-get`.
+The remote installer installs missing apt packages by default using
+`sudo apt-get`. Add `--skip-apt` when you want to only report missing packages.
 
 ## On the remote machine
 
@@ -51,8 +50,7 @@ Omit `--with-dotfiles` to skip the normal zsh/tmux symlink setup.
 ## What it configures
 
 - Ubuntu package checks for common tools such as `git`, `curl`, `jq`, `ripgrep`,
-  `fd`, `tmux`, `zsh`, `python3`, `pipx`, and `npm` (`--install-apt` required to
-  install missing packages)
+  `fd`, `tmux`, `zsh`, `python3`, `pipx`, and `npm`
 - user-space `uv==0.11.2`
 - user-space `pre-commit`
 - GitHub Copilot CLI via npm when `copilot` is missing and `npm` is available

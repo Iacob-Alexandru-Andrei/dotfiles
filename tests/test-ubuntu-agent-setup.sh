@@ -99,10 +99,19 @@ if ! awk '
 fi
 
 grep -q -- '--install-apt' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must make apt installation explicit"
+  fail "ubuntu-agent installer must keep --install-apt for compatibility"
 
-grep -q 'install_apt=0' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must not install apt packages by default"
+grep -q -- '--skip-apt' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must offer --skip-apt for base-image-safe runs"
+
+grep -q -- '--skip-apt' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
+  fail "host installer must pass through --skip-apt"
+
+grep -q 'install_apt=1' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must install missing apt packages by default"
+
+grep -q 'install_apt=1' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
+  fail "host installer must request apt installation by default"
 
 if grep -q 'ubuntu-agent' "$repo_dir/install.sh"; then
   fail "normal install.sh must not invoke ubuntu-agent setup"
