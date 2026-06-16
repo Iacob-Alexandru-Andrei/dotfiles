@@ -66,6 +66,8 @@ ensure_path_block() {
   begin='# BEGIN dotfiles ubuntu-agent path'
   end='# END dotfiles ubuntu-agent path'
 
+  export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
+
   touch "$profile_file"
   if grep -q "$begin" "$profile_file"; then
     return 0
@@ -122,8 +124,15 @@ apt_install_missing() {
   sudo apt-get install -y $missing
 }
 
+pipx_package_installed() {
+  package_name=$1
+
+  have pipx || return 1
+  python3 -m pipx list --short 2>/dev/null | grep -Eq "^${package_name}( |$)"
+}
+
 install_uv() {
-  if have uv; then
+  if have uv || pipx_package_installed uv; then
     return 0
   fi
 
@@ -136,7 +145,7 @@ install_uv() {
 }
 
 install_pre_commit() {
-  if have pre-commit; then
+  if have pre-commit || pipx_package_installed pre-commit; then
     return 0
   fi
 

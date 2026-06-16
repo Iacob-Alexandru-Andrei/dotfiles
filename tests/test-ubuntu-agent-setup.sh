@@ -61,6 +61,18 @@ grep -q 'superpowers@superpowers-marketplace' "$repo_dir/ubuntu-agent/install.sh
 grep -q 'install_skill_links_from_repo' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must link skill directories from cloned source repos"
 
+grep -q 'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must update PATH for the current run"
+
+grep -q 'pipx_package_installed' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must detect pipx-installed packages idempotently"
+
+grep -q 'pipx_package_installed uv' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "uv install must skip existing pipx uv package even before PATH refresh"
+
+grep -q 'pipx_package_installed pre-commit' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "pre-commit install must skip existing pipx pre-commit package even before PATH refresh"
+
 grep -q 'find "$skills_root" -mindepth 2 -maxdepth 2 -name SKILL.md' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "skill installer must only discover SKILL.md files, not run repo install scripts"
 
