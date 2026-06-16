@@ -1,0 +1,186 @@
+#!/bin/sh
+set -eu
+
+repo_url='https://github.com/Iacob-Alexandru-Andrei/dotfiles.git'
+personal_key=''
+work_key=''
+skills_source="${HOME}/.copilot/skills"
+plugins_source="${HOME}/.copilot/installed-plugins"
+copy_skills=1
+copy_plugins=1
+with_dotfiles=1
+install_apt=0
+
+usage() {
+  cat <<'EOF' >&2
+usage: install-ubuntu-agent-on-host [options] <ssh-host>
+
+Options:
+  --personal-key PATH   Copy PATH to remote ~/.ssh/github-personal
+  --work-key PATH       Copy PATH to remote ~/.ssh/github-company
+  --skills-source PATH  Copy Copilot skills from PATH (default: ~/.copilot/skills)
+  --plugins-source PATH Copy Copilot installed plugins from PATH
+  --skip-skills         Do not copy Copilot skills
+  --skip-plugins        Do not copy Copilot installed plugins
+  --skip-dotfiles       Do not run the normal ~/.dotfiles/install.sh on remote
+  --install-apt         Allow the remote installer to install missing apt packages
+  -h, --help            Show this help
+
+This script never commits, prints, or stores private keys in the dotfiles repo.
+EOF
+}
+
+host=''
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --personal-key)
+      [ "$#" -ge 2 ] || { usage; exit 2; }
+      personal_key=$2
+      shift 2
+      ;;
+    --work-key)
+      [ "$#" -ge 2 ] || { usage; exit 2; }
+      work_key=$2
+      shift 2
+      ;;
+    --skills-source)
+      [ "$#" -ge 2 ] || { usage; exit 2; }
+      skills_source=$2
+      shift 2
+      ;;
+    --plugins-source)
+      [ "$#" -ge 2 ] || { usage; exit 2; }
+      plugins_source=$2
+      shift 2
+      ;;
+    --skip-skills)
+      copy_skills=0
+      shift
+      ;;
+    --skip-plugins)
+      copy_plugins=0
+      shift
+      ;;
+    --skip-dotfiles)
+      with_dotfiles=0
+      shift
+      ;;
+    --install-apt)
+      install_apt=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      printf 'unknown option: %s\n' "$1" >&2
+      usage
+      exit 2
+      ;;
+    *)
+      [ -z "$host" ] || { usage; exit 2; }
+      host=$1
+      shift
+      ;;
+  esac
+done
+
+[ -n "$host" ] || { usage; exit 2; }
+
+install_terminfo() {
+  term_name=${TERM:-}
+
+  [ -n "$term_name" ] || return 0
+
+  case $term_name in
+    *[!A-Za-z0-9._+-]*)
+      printf 'skipping terminfo install for unusual TERM: %s\n' "$term_name" >&2
+      return 0
+      ;;
+  esac
+
+  command -v infocmp >/dev/null 2>&1 || return 0
+  infocmp -x "$term_name" >/dev/null 2>&1 || return 0
+
+  if ssh "$host" "infocmp '$term_name' >/dev/null 2>&1"; then
+    return 0
+  fi
+
+  if ! ssh "$host" "command -v tic >/dev/null 2>&1"; then
+    printf 'remote host is missing tic; install ncurses terminfo or run tmux with TERM=xterm-256color\n' >&2
+    return 0
+  fi
+
+  printf 'installing terminfo on %s: %s\n' "$host" "$term_name"
+  infocmp -x "$term_name" | ssh "$host" "tic -x -"
+}
+
+copy_key_if_requested() {
+  label=$1
+  source_path=$2
+  remote_name=$3
+
+  [ -n "$source_path" ] || return 0
+  [ -f "$source_path" ] || {
+    printf 'missing %s key: %s\n' "$label" "$source_path" >&2
+    exit 1
+  }
+
+  printf 'copying %s key to remote ~/.ssh/%s\n' "$label" "$remote_name"
+  ssh "$host" "set -eu; umask 077; mkdir -p \"\$HOME/.ssh\""
+  scp -q "$source_path" "$host:.ssh/${remote_name}.tmp"
+  ssh "$host" "set -eu; chmod 600 \"\$HOME/.ssh/${remote_name}.tmp\"; mv \"\$HOME/.ssh/${remote_name}.tmp\" \"\$HOME/.ssh/${remote_name}\""
+
+  if [ -f "${source_path}.pub" ]; then
+    scp -q "${source_path}.pub" "$host:.ssh/${remote_name}.pub.tmp"
+    ssh "$host" "set -eu; chmod 644 \"\$HOME/.ssh/${remote_name}.pub.tmp\"; mv \"\$HOME/.ssh/${remote_name}.pub.tmp\" \"\$HOME/.ssh/${remote_name}.pub\""
+  fi
+}
+
+copy_tree_if_present() {
+  label=$1
+  source_dir=$2
+  remote_dir=$3
+
+  [ -d "$source_dir" ] || {
+    printf 'skipping %s; source directory not found: %s\n' "$label" "$source_dir" >&2
+    return 0
+  }
+
+  printf 'copying %s to remote %s\n' "$label" "$remote_dir"
+  tar -C "$source_dir" -cf - . |
+    ssh "$host" "set -eu; mkdir -p \"\$HOME/$remote_dir\"; tar -C \"\$HOME/$remote_dir\" -xf -"
+}
+
+install_terminfo
+
+ssh "$host" "set -eu
+if [ ! -d \"\$HOME/.dotfiles/.git\" ]; then
+  git clone '$repo_url' \"\$HOME/.dotfiles\"
+else
+  git -C \"\$HOME/.dotfiles\" remote set-url origin '$repo_url'
+  git -C \"\$HOME/.dotfiles\" pull --ff-only
+fi"
+
+copy_key_if_requested "personal GitHub" "$personal_key" "github-personal"
+copy_key_if_requested "work GitHub" "$work_key" "github-company"
+
+if [ "$copy_skills" -eq 1 ]; then
+  copy_tree_if_present "Copilot skills" "$skills_source" ".copilot/skills"
+fi
+
+if [ "$copy_plugins" -eq 1 ]; then
+  copy_tree_if_present "Copilot installed plugins" "$plugins_source" ".copilot/installed-plugins"
+fi
+
+remote_args=''
+if [ "$with_dotfiles" -eq 1 ]; then
+  remote_args='--with-dotfiles'
+fi
+
+if [ "$install_apt" -eq 1 ]; then
+  remote_args="$remote_args --install-apt"
+fi
+
+ssh "$host" "\"\$HOME/.dotfiles/ubuntu-agent/install.sh\" $remote_args"

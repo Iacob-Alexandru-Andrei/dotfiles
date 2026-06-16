@@ -40,3 +40,19 @@ Open a new zsh session after installing:
 ```sh
 exec zsh
 ```
+
+## Optional Ubuntu agent setup
+
+Agent/Copilot setup for Ubuntu hosts is separate from the normal dotfiles
+installer. From a machine that already has this repo:
+
+```sh
+~/.dotfiles/bin/install-ubuntu-agent-on-host \
+  --personal-key ~/.ssh/<personal-key> \
+  --work-key ~/.ssh/<work-key> \
+  <ssh-host>
+```
+
+See [`ubuntu-agent/README.md`](ubuntu-agent/README.md) for details. Missing apt
+packages are reported by default; pass `--install-apt` only when you want the
+script to install them.
