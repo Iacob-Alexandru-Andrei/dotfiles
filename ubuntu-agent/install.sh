@@ -148,6 +148,20 @@ install_pre_commit() {
   fi
 }
 
+clone_or_update_repo() {
+  repo_url=$1
+  target_dir=$2
+
+  if [ ! -d "$target_dir/.git" ]; then
+    mkdir -p "$(dirname -- "$target_dir")"
+    git clone "$repo_url" "$target_dir"
+    return 0
+  fi
+
+  git -C "$target_dir" remote set-url origin "$repo_url"
+  git -C "$target_dir" pull --ff-only
+}
+
 install_copilot_cli() {
   if have copilot; then
     return 0
@@ -164,10 +178,73 @@ install_copilot_cli() {
   npm install -g @github/copilot
 }
 
+link_skill_dir() {
+  source_dir=$1
+  skill_name=$(basename -- "$source_dir")
+  target_dir="$HOME/.copilot/skills/$skill_name"
+
+  [ -f "$source_dir/SKILL.md" ] || return 0
+
+  if [ -L "$target_dir" ]; then
+    current_link=$(readlink "$target_dir")
+    if [ "$current_link" = "$source_dir" ]; then
+      return 0
+    fi
+
+    rm "$target_dir"
+  elif [ -e "$target_dir" ]; then
+    info "skipping existing Copilot skill: $target_dir"
+    return 0
+  fi
+
+  ln -s "$source_dir" "$target_dir"
+}
+
+install_skill_links_from_repo() {
+  repo_dir=$1
+  skills_root=$2
+
+  [ -d "$skills_root" ] || return 0
+
+  find "$skills_root" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | while IFS= read -r skill_file; do
+    link_skill_dir "$(dirname -- "$skill_file")"
+  done
+}
+
+install_superpowers_plugin() {
+  if ! have copilot; then
+    info "copilot not found; skipping Superpowers plugin install"
+    return 0
+  fi
+
+  info "installing Superpowers from official Copilot plugin marketplace"
+  copilot plugin marketplace add obra/superpowers-marketplace >/dev/null 2>&1 || true
+  copilot plugin install superpowers@superpowers-marketplace >/dev/null 2>&1 ||
+    copilot plugin update superpowers >/dev/null 2>&1 ||
+    info "Superpowers plugin install/update did not complete; run: copilot plugin install superpowers@superpowers-marketplace"
+}
+
 install_copilot_skills() {
-  mkdir -p "$HOME/.copilot/skills" "$HOME/.copilot/installed-plugins"
+  source_root="$HOME/.local/share/dotfiles-agent"
+  custom_skills_repo="$source_root/skills"
+  academic_skills_repo="$source_root/academic-research-skills"
+
+  mkdir -p "$HOME/.copilot/skills" "$source_root"
+
+  clone_or_update_repo \
+    "git@github-personal:Iacob-Alexandru-Andrei/skills.git" \
+    "$custom_skills_repo" ||
+    info "custom skills repo clone failed; check github-personal SSH auth"
+
+  clone_or_update_repo \
+    "https://github.com/Imbad0202/academic-research-skills.git" \
+    "$academic_skills_repo"
+
+  install_skill_links_from_repo "$custom_skills_repo" "$custom_skills_repo/memory/skills"
+  install_skill_links_from_repo "$academic_skills_repo" "$academic_skills_repo"
+  install_superpowers_plugin
+
   info "Copilot skills directory: $HOME/.copilot/skills"
-  info "Copilot installed plugins directory: $HOME/.copilot/installed-plugins"
 }
 
 install_github_hosts() {
@@ -254,7 +331,7 @@ apt_install_missing
 install_uv
 install_pre_commit
 install_copilot_cli
-install_copilot_skills
 install_github_hosts
+install_copilot_skills
 run_dotfiles_install
 healthcheck

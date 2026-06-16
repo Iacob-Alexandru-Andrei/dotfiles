@@ -25,12 +25,13 @@ remote as `~/.ssh/github-personal` and `~/.ssh/github-company` with strict file
 permissions. It never stores keys in this repository and does not print key
 contents.
 
-By default, the driver also copies:
+The remote installer installs Copilot skills from source repositories instead of
+copying your local `~/.copilot` directories:
 
-- local `~/.copilot/skills` to remote `~/.copilot/skills`
-- local `~/.copilot/installed-plugins` to remote `~/.copilot/installed-plugins`
-
-Use `--skip-skills` or `--skip-plugins` to disable those copies.
+- custom skills from `git@github-personal:Iacob-Alexandru-Andrei/skills.git`
+- academic skills from `https://github.com/Imbad0202/academic-research-skills.git`
+- Superpowers from the official Copilot plugin marketplace:
+  `superpowers@superpowers-marketplace`
 
 The remote installer reports missing apt packages by default. Add
 `--install-apt` only when you want it to install missing Ubuntu packages with
@@ -54,7 +55,8 @@ Omit `--with-dotfiles` to skip the normal zsh/tmux symlink setup.
 - user-space `uv==0.11.2`
 - user-space `pre-commit`
 - GitHub Copilot CLI via npm when `copilot` is missing and `npm` is available
-- Copilot skills/plugin directories
+- Copilot skills from source repositories and Superpowers from the official
+  plugin marketplace
 - SSH host aliases `github-personal` and `github-company`
 - a healthcheck for `gh`, `az`, `amlt`, keys, skills, and `WANDB_API_KEY`
 

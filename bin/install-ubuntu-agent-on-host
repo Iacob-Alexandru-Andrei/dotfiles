@@ -2,12 +2,11 @@
 set -eu
 
 repo_url='https://github.com/Iacob-Alexandru-Andrei/dotfiles.git'
+repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+setup_ref=$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD 2>/dev/null ||
+  git -C "$repo_dir" rev-parse --short HEAD)
 personal_key=''
 work_key=''
-skills_source="${HOME}/.copilot/skills"
-plugins_source="${HOME}/.copilot/installed-plugins"
-copy_skills=1
-copy_plugins=1
 with_dotfiles=1
 install_apt=0
 
@@ -18,10 +17,6 @@ usage: install-ubuntu-agent-on-host [options] <ssh-host>
 Options:
   --personal-key PATH   Copy PATH to remote ~/.ssh/github-personal
   --work-key PATH       Copy PATH to remote ~/.ssh/github-company
-  --skills-source PATH  Copy Copilot skills from PATH (default: ~/.copilot/skills)
-  --plugins-source PATH Copy Copilot installed plugins from PATH
-  --skip-skills         Do not copy Copilot skills
-  --skip-plugins        Do not copy Copilot installed plugins
   --skip-dotfiles       Do not run the normal ~/.dotfiles/install.sh on remote
   --install-apt         Allow the remote installer to install missing apt packages
   -h, --help            Show this help
@@ -42,24 +37,6 @@ while [ "$#" -gt 0 ]; do
       [ "$#" -ge 2 ] || { usage; exit 2; }
       work_key=$2
       shift 2
-      ;;
-    --skills-source)
-      [ "$#" -ge 2 ] || { usage; exit 2; }
-      skills_source=$2
-      shift 2
-      ;;
-    --plugins-source)
-      [ "$#" -ge 2 ] || { usage; exit 2; }
-      plugins_source=$2
-      shift 2
-      ;;
-    --skip-skills)
-      copy_skills=0
-      shift
-      ;;
-    --skip-plugins)
-      copy_plugins=0
-      shift
       ;;
     --skip-dotfiles)
       with_dotfiles=0
@@ -138,41 +115,20 @@ copy_key_if_requested() {
   fi
 }
 
-copy_tree_if_present() {
-  label=$1
-  source_dir=$2
-  remote_dir=$3
-
-  [ -d "$source_dir" ] || {
-    printf 'skipping %s; source directory not found: %s\n' "$label" "$source_dir" >&2
-    return 0
-  }
-
-  printf 'copying %s to remote %s\n' "$label" "$remote_dir"
-  tar -C "$source_dir" -cf - . |
-    ssh "$host" "set -eu; mkdir -p \"\$HOME/$remote_dir\"; tar -C \"\$HOME/$remote_dir\" -xf -"
-}
-
 install_terminfo
 
 ssh "$host" "set -eu
 if [ ! -d \"\$HOME/.dotfiles/.git\" ]; then
-  git clone '$repo_url' \"\$HOME/.dotfiles\"
+  git clone --branch '$setup_ref' '$repo_url' \"\$HOME/.dotfiles\"
 else
   git -C \"\$HOME/.dotfiles\" remote set-url origin '$repo_url'
+  git -C \"\$HOME/.dotfiles\" fetch origin '$setup_ref'
+  git -C \"\$HOME/.dotfiles\" checkout '$setup_ref'
   git -C \"\$HOME/.dotfiles\" pull --ff-only
 fi"
 
 copy_key_if_requested "personal GitHub" "$personal_key" "github-personal"
 copy_key_if_requested "work GitHub" "$work_key" "github-company"
-
-if [ "$copy_skills" -eq 1 ]; then
-  copy_tree_if_present "Copilot skills" "$skills_source" ".copilot/skills"
-fi
-
-if [ "$copy_plugins" -eq 1 ]; then
-  copy_tree_if_present "Copilot installed plugins" "$plugins_source" ".copilot/installed-plugins"
-fi
 
 remote_args=''
 if [ "$with_dotfiles" -eq 1 ]; then
