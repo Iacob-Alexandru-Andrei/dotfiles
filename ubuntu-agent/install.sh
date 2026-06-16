@@ -201,7 +201,7 @@ link_skill_dir() {
 }
 
 install_skill_links_from_repo() {
-  repo_dir=$1
+  skill_repo_dir=$1
   skills_root=$2
 
   [ -d "$skills_root" ] || return 0

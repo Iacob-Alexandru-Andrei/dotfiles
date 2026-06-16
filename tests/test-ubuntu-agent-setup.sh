@@ -61,6 +61,25 @@ grep -q 'superpowers@superpowers-marketplace' "$repo_dir/ubuntu-agent/install.sh
 grep -q 'install_skill_links_from_repo' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must link skill directories from cloned source repos"
 
+grep -q 'find "$skills_root" -mindepth 2 -maxdepth 2 -name SKILL.md' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "skill installer must only discover SKILL.md files, not run repo install scripts"
+
+if grep -q '"$academic_skills_repo"/install.sh' "$repo_dir/ubuntu-agent/install.sh"; then
+  fail "ubuntu-agent installer must not run academic repo install.sh"
+fi
+
+if grep -q '^  repo_dir=' "$repo_dir/ubuntu-agent/install.sh"; then
+  fail "functions must not overwrite the global repo_dir used by run_dotfiles_install"
+fi
+
+if ! awk '
+  /^install_github_hosts$/ { github_line = NR }
+  /^install_copilot_skills$/ { skills_line = NR }
+  END { exit !(github_line && skills_line && github_line < skills_line) }
+' "$repo_dir/ubuntu-agent/install.sh"; then
+  fail "GitHub SSH aliases must be configured before cloning private skill repos"
+fi
+
 grep -q -- '--install-apt' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must make apt installation explicit"
 
