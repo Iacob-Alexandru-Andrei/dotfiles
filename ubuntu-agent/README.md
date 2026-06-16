@@ -28,7 +28,8 @@ contents.
 The remote installer installs Copilot skills from source repositories instead of
 copying your local `~/.copilot` directories:
 
-- custom skills from `git@github-personal:Iacob-Alexandru-Andrei/skills.git`
+- universal custom skills from `git@github-personal:Iacob-Alexandru-Andrei/skills.git`
+- God-specific skills from `git@github-personal:Iacob-Alexandru-Andrei/god-skills.git`
 - academic skills from `https://github.com/Imbad0202/academic-research-skills.git`
 - Superpowers from the official Copilot plugin marketplace:
   `superpowers@superpowers-marketplace`

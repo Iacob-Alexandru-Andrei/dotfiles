@@ -52,6 +52,9 @@ grep -q 'Imbad0202/academic-research-skills.git' "$repo_dir/ubuntu-agent/install
 grep -q 'Iacob-Alexandru-Andrei/skills.git' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must install custom skills from the source repository"
 
+grep -q 'Iacob-Alexandru-Andrei/god-skills.git' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must install God-specific skills from the source repository"
+
 grep -q 'superpowers@superpowers-marketplace' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must install Superpowers from the official Copilot plugin marketplace"
 

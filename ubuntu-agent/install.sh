@@ -227,6 +227,7 @@ install_superpowers_plugin() {
 install_copilot_skills() {
   source_root="$HOME/.local/share/dotfiles-agent"
   custom_skills_repo="$source_root/skills"
+  god_skills_repo="$source_root/god-skills"
   academic_skills_repo="$source_root/academic-research-skills"
 
   mkdir -p "$HOME/.copilot/skills" "$source_root"
@@ -237,10 +238,16 @@ install_copilot_skills() {
     info "custom skills repo clone failed; check github-personal SSH auth"
 
   clone_or_update_repo \
+    "git@github-personal:Iacob-Alexandru-Andrei/god-skills.git" \
+    "$god_skills_repo" ||
+    info "God-specific skills repo clone failed; check github-personal SSH auth"
+
+  clone_or_update_repo \
     "https://github.com/Imbad0202/academic-research-skills.git" \
     "$academic_skills_repo"
 
   install_skill_links_from_repo "$custom_skills_repo" "$custom_skills_repo/memory/skills"
+  install_skill_links_from_repo "$god_skills_repo" "$god_skills_repo/memory/skills"
   install_skill_links_from_repo "$academic_skills_repo" "$academic_skills_repo"
   install_superpowers_plugin
 
