@@ -23,8 +23,14 @@ grep -q 'ubuntu-agent/install.sh' "$repo_dir/bin/install-ubuntu-agent-on-host" |
 grep -q 'copy_key_if_requested' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
   fail "host installer must keep SSH key copying explicit"
 
+grep -q 'copy_key_if_requested "work GitHub default" "$work_key" "id_ed25519"' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
+  fail "host installer must copy the work GitHub key to the standard ~/.ssh/id_ed25519 name"
+
 grep -q 'setup_ref=' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
   fail "host installer must detect the current local ref that contains ubuntu-agent files"
+
+grep -q -- '--skip-neovim' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
+  fail "host installer must pass through --skip-neovim"
 
 grep -q 'git clone --branch' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
   fail "host installer must clone the selected setup ref on new remotes"
@@ -42,6 +48,18 @@ fi
 
 grep -q 'BEGIN dotfiles ubuntu-agent github hosts' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must manage SSH host aliases in a marked block"
+
+grep -q 'Host github.com' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must configure github.com for ordinary Git SSH remotes"
+
+grep -q 'IdentityFile ~/.ssh/id_ed25519' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ordinary github.com SSH remotes must use the standard company key"
+
+grep -q 'ensure_default_company_key' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must default an existing company key to ~/.ssh/id_ed25519"
+
+grep -q 'ln -s "$HOME/.ssh/github-company" "$HOME/.ssh/id_ed25519"' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "company key defaulting must avoid duplicating private-key contents"
 
 grep -q 'ensure_github_known_host' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must idempotently add GitHub to known_hosts"
@@ -88,8 +106,41 @@ grep -q 'pipx_package_installed wandb' "$repo_dir/ubuntu-agent/install.sh" ||
 grep -q 'python3 -m pipx install wandb' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "wandb should be installed with pipx when available"
 
-grep -q 'git curl jq rg fdfind tmux zsh python3 uv pre-commit wandb npm copilot gh az amlt' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent healthcheck must report wandb"
+grep -q 'install_astronvim' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must install AstroNvim"
+
+grep -q 'install_neovim=1' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must install Neovim/AstroNvim by default"
+
+grep -q -- '--skip-neovim' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must offer --skip-neovim"
+
+grep -q 'nvim:neovim' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent apt setup must install neovim when nvim is missing"
+
+grep -q 'AstroNvim/template' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "AstroNvim must be installed from the official template repository"
+
+grep -q '.dotfiles-ubuntu-agent-astronvim' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "AstroNvim install must write an ownership marker for idempotence"
+
+grep -q 'existing Neovim config' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "AstroNvim install must skip existing non-owned Neovim config"
+
+grep -q 'install_bash_zsh_handoff' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must configure bash-to-zsh handoff"
+
+grep -q 'BEGIN dotfiles ubuntu-agent zsh handoff' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "bash-to-zsh handoff must use a marked idempotent block"
+
+grep -q 'DOTFILES_ZSH_HANDOFF' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "bash-to-zsh handoff must guard against recursion"
+
+grep -q 'exec zsh' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "bash-to-zsh handoff must exec zsh for interactive bash shells"
+
+grep -q 'git curl jq rg fdfind tmux zsh nvim python3 uv pre-commit wandb npm copilot gh az amlt' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent healthcheck must report nvim and wandb"
 
 grep -q 'install_github_cli' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must install GitHub CLI"

@@ -3,15 +3,16 @@ set -eu
 
 with_dotfiles=0
 install_apt=1
+install_neovim=1
 
 usage() {
   cat <<'EOF' >&2
-usage: ubuntu-agent/install.sh [--with-dotfiles] [--install-apt] [--skip-apt]
+usage: ubuntu-agent/install.sh [--with-dotfiles] [--install-apt] [--skip-apt] [--skip-neovim]
 
 Sets up an Ubuntu host for agent/Copilot work without changing the default
 dotfiles installer. Existing tools and config are detected and left in place.
 Missing apt packages are installed by default. Use --skip-apt to only report
-missing packages.
+missing packages. Use --skip-neovim to skip Neovim/AstroNvim setup.
 EOF
 }
 
@@ -27,6 +28,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --skip-apt)
       install_apt=0
+      shift
+      ;;
+    --skip-neovim)
+      install_neovim=0
       shift
       ;;
     -h|--help)
@@ -97,6 +102,7 @@ apt_install_missing() {
     fdfind:fd-find \
     tmux:tmux \
     zsh:zsh \
+    nvim:neovim \
     unzip:unzip \
     python3:python3 \
     pipx:pipx \
@@ -172,6 +178,31 @@ install_wandb() {
   else
     python3 -m pip install --user wandb
   fi
+}
+
+install_astronvim() {
+  if [ "$install_neovim" -eq 0 ]; then
+    return 0
+  fi
+
+  nvim_dir="$HOME/.config/nvim"
+  marker="$nvim_dir/.dotfiles-ubuntu-agent-astronvim"
+
+  if [ -e "$nvim_dir" ] && [ ! -f "$marker" ]; then
+    info "existing Neovim config found at $nvim_dir; skipping AstroNvim setup"
+    return 0
+  fi
+
+  if [ ! -d "$nvim_dir/.git" ]; then
+    rm -rf "$nvim_dir"
+    mkdir -p "$(dirname -- "$nvim_dir")"
+    git clone https://github.com/AstroNvim/template "$nvim_dir"
+  else
+    git -C "$nvim_dir" remote set-url origin https://github.com/AstroNvim/template
+    git -C "$nvim_dir" pull --ff-only
+  fi
+
+  touch "$marker"
 }
 
 install_github_cli() {
@@ -331,13 +362,25 @@ install_github_hosts() {
   chmod 600 "$config_file"
 
   if grep -q "$begin" "$config_file"; then
-    info "GitHub SSH host aliases already configured"
-    return 0
+    tmp_file=$(mktemp)
+    awk -v begin="$begin" -v end="$end" '
+      $0 == begin { skip = 1; next }
+      $0 == end { skip = 0; next }
+      !skip { print }
+    ' "$config_file" > "$tmp_file"
+    mv "$tmp_file" "$config_file"
+    chmod 600 "$config_file"
   fi
 
   cat >> "$config_file" <<'EOF'
 
 # BEGIN dotfiles ubuntu-agent github hosts
+Host github.com
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
+
 Host github-personal
   HostName github.com
   User git
@@ -351,6 +394,25 @@ Host github-company
   IdentitiesOnly yes
 # END dotfiles ubuntu-agent github hosts
 EOF
+}
+
+ensure_default_company_key() {
+  mkdir -p "$HOME/.ssh"
+  chmod 700 "$HOME/.ssh"
+
+  if [ ! -f "$HOME/.ssh/github-company" ]; then
+    return 0
+  fi
+
+  if [ ! -e "$HOME/.ssh/id_ed25519" ] && [ ! -L "$HOME/.ssh/id_ed25519" ]; then
+    ln -s "$HOME/.ssh/github-company" "$HOME/.ssh/id_ed25519"
+  fi
+
+  if [ -f "$HOME/.ssh/github-company.pub" ] &&
+    [ ! -e "$HOME/.ssh/id_ed25519.pub" ] &&
+    [ ! -L "$HOME/.ssh/id_ed25519.pub" ]; then
+    ln -s "$HOME/.ssh/github-company.pub" "$HOME/.ssh/id_ed25519.pub"
+  fi
 }
 
 ensure_github_known_host() {
@@ -382,10 +444,36 @@ run_dotfiles_install() {
   "$repo_dir/install.sh"
 }
 
+install_bash_zsh_handoff() {
+  bashrc="$HOME/.bashrc"
+  begin='# BEGIN dotfiles ubuntu-agent zsh handoff'
+  end='# END dotfiles ubuntu-agent zsh handoff'
+
+  touch "$bashrc"
+  if grep -q "$begin" "$bashrc"; then
+    return 0
+  fi
+
+  cat >> "$bashrc" <<'EOF'
+
+# BEGIN dotfiles ubuntu-agent zsh handoff
+case $- in
+  *i*) ;;
+  *) return ;;
+esac
+
+if [ -z "${DOTFILES_ZSH_HANDOFF:-}" ] && command -v zsh >/dev/null 2>&1; then
+  export DOTFILES_ZSH_HANDOFF=1
+  exec zsh
+fi
+# END dotfiles ubuntu-agent zsh handoff
+EOF
+}
+
 healthcheck() {
   info ""
   info "ubuntu-agent healthcheck"
-  for cmd in git curl jq rg fdfind tmux zsh python3 uv pre-commit wandb npm copilot gh az amlt; do
+  for cmd in git curl jq rg fdfind tmux zsh nvim python3 uv pre-commit wandb npm copilot gh az amlt; do
     if have "$cmd"; then
       printf '  ok      %s\n' "$cmd"
     else
@@ -393,7 +481,7 @@ healthcheck() {
     fi
   done
 
-  for alias in github-personal github-company; do
+  for alias in github.com github-personal github-company; do
     if ssh -G "$alias" >/dev/null 2>&1; then
       printf '  ok      ssh alias %s\n' "$alias"
     else
@@ -401,7 +489,7 @@ healthcheck() {
     fi
   done
 
-  for key_name in github-personal github-company; do
+  for key_name in github-personal github-company id_ed25519; do
     if [ -f "$HOME/.ssh/$key_name" ]; then
       printf '  ok      ~/.ssh/%s exists\n' "$key_name"
     else
@@ -425,10 +513,13 @@ apt_install_missing
 install_uv
 install_pre_commit
 install_wandb
+install_astronvim
 install_github_cli
 install_copilot_cli
 install_github_hosts
+ensure_default_company_key
 ensure_github_known_host
 install_copilot_skills
 run_dotfiles_install
+install_bash_zsh_handoff
 healthcheck

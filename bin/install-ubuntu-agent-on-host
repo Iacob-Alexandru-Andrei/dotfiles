@@ -9,6 +9,7 @@ personal_key=''
 work_key=''
 with_dotfiles=1
 install_apt=1
+install_neovim=1
 
 usage() {
   cat <<'EOF' >&2
@@ -20,6 +21,7 @@ Options:
   --skip-dotfiles       Do not run the normal ~/.dotfiles/install.sh on remote
   --skip-apt            Do not install missing Ubuntu packages
   --install-apt         Install missing Ubuntu packages (default; kept for compatibility)
+  --skip-neovim         Do not install Neovim/AstroNvim
   -h, --help            Show this help
 
 This script never commits, prints, or stores private keys in the dotfiles repo.
@@ -49,6 +51,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --skip-apt)
       install_apt=0
+      shift
+      ;;
+    --skip-neovim)
+      install_neovim=0
       shift
       ;;
     -h|--help)
@@ -134,6 +140,7 @@ fi"
 
 copy_key_if_requested "personal GitHub" "$personal_key" "github-personal"
 copy_key_if_requested "work GitHub" "$work_key" "github-company"
+copy_key_if_requested "work GitHub default" "$work_key" "id_ed25519"
 
 remote_args=''
 if [ "$with_dotfiles" -eq 1 ]; then
@@ -144,6 +151,10 @@ if [ "$install_apt" -eq 0 ]; then
   remote_args="$remote_args --skip-apt"
 else
   remote_args="$remote_args --install-apt"
+fi
+
+if [ "$install_neovim" -eq 0 ]; then
+  remote_args="$remote_args --skip-neovim"
 fi
 
 ssh "$host" "\"\$HOME/.dotfiles/ubuntu-agent/install.sh\" $remote_args"

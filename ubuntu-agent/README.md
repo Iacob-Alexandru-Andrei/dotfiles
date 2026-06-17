@@ -22,7 +22,9 @@ manual.
 
 The key paths are examples. The script copies the selected private keys to the
 remote as `~/.ssh/github-personal` and `~/.ssh/github-company` with strict file
-permissions. It never stores keys in this repository and does not print key
+permissions. The work key is also installed as `~/.ssh/id_ed25519`, so ordinary
+`git@github.com:...` remotes and submodules use the company key without a custom
+SSH host alias. It never stores keys in this repository and does not print key
 contents.
 
 The remote installer installs Copilot skills from source repositories instead of
@@ -36,6 +38,7 @@ copying your local `~/.copilot` directories:
 
 The remote installer installs missing apt packages by default using
 `sudo apt-get`. Add `--skip-apt` when you want to only report missing packages.
+It installs Neovim with AstroNvim by default; add `--skip-neovim` to opt out.
 
 ## On the remote machine
 
@@ -50,14 +53,17 @@ Omit `--with-dotfiles` to skip the normal zsh/tmux symlink setup.
 ## What it configures
 
 - Ubuntu package checks for common tools such as `git`, `curl`, `jq`, `ripgrep`,
-  `fd`, `tmux`, `zsh`, `python3`, `pipx`, and `npm`
+  `fd`, `tmux`, `zsh`, `nvim`, `python3`, `pipx`, and `npm`
 - user-space `uv==0.11.2`
 - user-space `pre-commit`
 - user-space `wandb`
+- Neovim with AstroNvim, unless an existing non-owned `~/.config/nvim` is present
+- interactive bash sessions hand off to zsh automatically
 - GitHub Copilot CLI via npm when `copilot` is missing and `npm` is available
 - Copilot skills from source repositories and Superpowers from the official
   plugin marketplace
-- SSH host aliases `github-personal` and `github-company`
+- SSH defaults for ordinary `github.com` remotes plus host aliases
+  `github-personal` and `github-company`
 - a healthcheck for `gh`, `az`, `amlt`, keys, skills, and `WANDB_API_KEY`
 
 Authentication remains manual: run `gh auth login`, `copilot login`, `az login`,
