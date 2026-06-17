@@ -115,6 +115,15 @@ grep -q 'pipx_package_installed nvitop' "$repo_dir/ubuntu-agent/install.sh" ||
 grep -q 'python3 -m pipx install nvitop' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "nvitop should be installed with pipx when available"
 
+grep -q 'install_bpytop' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must install bpytop"
+
+grep -q 'pipx_package_installed bpytop' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "bpytop install must skip existing pipx bpytop package even before PATH refresh"
+
+grep -q 'python3 -m pipx install bpytop' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "bpytop should be installed with pipx when available"
+
 grep -q 'install_astronvim' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must install AstroNvim"
 
@@ -169,8 +178,8 @@ grep -q 'DOTFILES_ZSH_HANDOFF' "$repo_dir/ubuntu-agent/install.sh" ||
 grep -q 'exec zsh' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "bash-to-zsh handoff must exec zsh for interactive bash shells"
 
-grep -q 'git curl jq rg fdfind tmux zsh nvim python3 uv pre-commit wandb nvitop npm copilot gh az amlt' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent healthcheck must report nvim, wandb, and nvitop"
+grep -q 'git curl jq rg fdfind tmux zsh nvim python3 uv pre-commit wandb nvitop bpytop npm copilot gh az amlt' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent healthcheck must report nvim, wandb, nvitop, and bpytop"
 
 grep -q 'install_github_cli' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must install GitHub CLI"

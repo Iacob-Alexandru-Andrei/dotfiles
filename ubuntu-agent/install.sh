@@ -193,6 +193,19 @@ install_nvitop() {
   fi
 }
 
+install_bpytop() {
+  if have bpytop || pipx_package_installed bpytop; then
+    return 0
+  fi
+
+  info "installing bpytop in user space"
+  if have pipx; then
+    python3 -m pipx install bpytop || python3 -m pip install --user bpytop
+  else
+    python3 -m pip install --user bpytop
+  fi
+}
+
 nvim_is_modern() {
   required_nvim_minor=11
 
@@ -558,7 +571,7 @@ EOF
 healthcheck() {
   info ""
   info "ubuntu-agent healthcheck"
-  for cmd in git curl jq rg fdfind tmux zsh nvim python3 uv pre-commit wandb nvitop npm copilot gh az amlt; do
+  for cmd in git curl jq rg fdfind tmux zsh nvim python3 uv pre-commit wandb nvitop bpytop npm copilot gh az amlt; do
     if have "$cmd"; then
       printf '  ok      %s\n' "$cmd"
     else
@@ -599,6 +612,7 @@ install_uv
 install_pre_commit
 install_wandb
 install_nvitop
+install_bpytop
 ensure_modern_neovim
 install_astronvim
 install_github_cli
