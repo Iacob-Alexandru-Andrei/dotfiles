@@ -55,6 +55,7 @@ installer. From a machine that already has this repo:
 
 See [`ubuntu-agent/README.md`](ubuntu-agent/README.md) for details. Missing apt
 packages are installed by default; pass `--skip-apt` if you only want the script
-to report them. Neovim/AstroNvim is installed by default; pass `--skip-neovim`
-to opt out. The work key is installed as the standard `~/.ssh/id_ed25519` GitHub
-key so ordinary `git@github.com:...` remotes use company GitHub access.
+to report them. Neovim 0.11+/AstroNvim is installed by default; pass
+`--skip-neovim` to opt out. The work key is installed as the standard
+`~/.ssh/id_ed25519` GitHub key so ordinary `git@github.com:...` remotes use
+company GitHub access.

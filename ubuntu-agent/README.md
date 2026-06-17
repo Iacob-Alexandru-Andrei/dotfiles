@@ -38,7 +38,8 @@ copying your local `~/.copilot` directories:
 
 The remote installer installs missing apt packages by default using
 `sudo apt-get`. Add `--skip-apt` when you want to only report missing packages.
-It installs Neovim with AstroNvim by default; add `--skip-neovim` to opt out.
+It installs Neovim 0.11+ with AstroNvim by default; add `--skip-neovim` to opt
+out.
 
 ## On the remote machine
 
@@ -57,7 +58,7 @@ Omit `--with-dotfiles` to skip the normal zsh/tmux symlink setup.
 - user-space `uv==0.11.2`
 - user-space `pre-commit`
 - user-space `wandb`
-- Neovim with AstroNvim, unless an existing non-owned `~/.config/nvim` is present
+- Neovim 0.11+ with AstroNvim, unless an existing non-owned `~/.config/nvim` is present
 - interactive bash sessions hand off to zsh automatically
 - GitHub Copilot CLI via npm when `copilot` is missing and `npm` is available
 - Copilot skills from source repositories and Superpowers from the official

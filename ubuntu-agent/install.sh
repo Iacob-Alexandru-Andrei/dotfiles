@@ -180,6 +180,67 @@ install_wandb() {
   fi
 }
 
+nvim_is_modern() {
+  required_nvim_minor=11
+
+  have nvim || return 1
+
+  nvim_version=$(
+    NVIM_APPNAME=dotfiles-agent-version-check nvim --version 2>/dev/null |
+      sed -n '1s/^NVIM v//p'
+  )
+  nvim_major=${nvim_version%%.*}
+  nvim_rest=${nvim_version#*.}
+  nvim_minor=${nvim_rest%%.*}
+
+  case $nvim_major:$nvim_minor in
+    *[!0-9:]* | :* | *:)
+      return 1
+      ;;
+  esac
+
+  if [ "$nvim_major" -gt 0 ]; then
+    return 0
+  fi
+
+  [ "$nvim_major" -eq 0 ] && [ "$nvim_minor" -ge "$required_nvim_minor" ]
+}
+
+ensure_modern_neovim() {
+  if [ "$install_neovim" -eq 0 ]; then
+    return 0
+  fi
+
+  if nvim_is_modern; then
+    return 0
+  fi
+
+  have curl || {
+    info "curl not found; skipping modern Neovim install"
+    return 0
+  }
+
+  have tar || {
+    info "tar not found; skipping modern Neovim install"
+    return 0
+  }
+
+  info "installing Neovim 0.11+ in user space"
+  nvim_url="https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz"
+  nvim_opt_dir="$HOME/.local/opt"
+  nvim_install_dir="$nvim_opt_dir/nvim-linux-x86_64"
+  nvim_tmp_dir=$(mktemp -d)
+  nvim_archive="$nvim_tmp_dir/nvim-linux-x86_64.tar.gz"
+
+  mkdir -p "$nvim_opt_dir" "$HOME/.local/bin"
+  curl -fsSL "$nvim_url" -o "$nvim_archive"
+  tar -xzf "$nvim_archive" -C "$nvim_tmp_dir"
+  rm -rf "$nvim_install_dir"
+  mv "$nvim_tmp_dir/nvim-linux-x86_64" "$nvim_install_dir"
+  ln -sfn "$nvim_install_dir/bin/nvim" "$HOME/.local/bin/nvim"
+  rm -rf "$nvim_tmp_dir"
+}
+
 install_astronvim() {
   if [ "$install_neovim" -eq 0 ]; then
     return 0
@@ -513,6 +574,7 @@ apt_install_missing
 install_uv
 install_pre_commit
 install_wandb
+ensure_modern_neovim
 install_astronvim
 install_github_cli
 install_copilot_cli

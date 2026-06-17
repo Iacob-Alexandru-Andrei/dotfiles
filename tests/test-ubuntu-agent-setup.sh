@@ -109,6 +109,21 @@ grep -q 'python3 -m pipx install wandb' "$repo_dir/ubuntu-agent/install.sh" ||
 grep -q 'install_astronvim' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must install AstroNvim"
 
+grep -q 'ensure_modern_neovim' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must ensure Neovim is modern enough for AstroNvim"
+
+grep -q 'required_nvim_minor=11' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "AstroNvim requires Neovim 0.11+"
+
+grep -q 'nvim-linux-x86_64.tar.gz' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "modern Neovim installer must use the upstream Linux x86_64 release tarball"
+
+grep -q 'NVIM_APPNAME' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "Neovim version checks must avoid loading user config"
+
+grep -q 'ln -sfn "$nvim_install_dir/bin/nvim" "$HOME/.local/bin/nvim"' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "modern Neovim installer must put nvim on the user PATH"
+
 grep -q 'install_neovim=1' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must install Neovim/AstroNvim by default"
 
