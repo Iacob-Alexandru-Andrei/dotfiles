@@ -39,7 +39,7 @@ copying your local `~/.copilot` directories:
 The remote installer installs missing apt packages by default using
 `sudo apt-get`. Add `--skip-apt` when you want to only report missing packages.
 It installs Neovim 0.11+ with AstroNvim by default; add `--skip-neovim` to opt
-out.
+out. It also installs `nvitop` as a user-space command for GPU monitoring.
 
 ## On the remote machine
 
@@ -58,6 +58,7 @@ Omit `--with-dotfiles` to skip the normal zsh/tmux symlink setup.
 - user-space `uv==0.11.2`
 - user-space `pre-commit`
 - user-space `wandb`
+- user-space `nvitop`
 - Neovim 0.11+ with AstroNvim, unless an existing non-owned `~/.config/nvim` is present
 - interactive bash sessions hand off to zsh automatically
 - GitHub Copilot CLI via npm when `copilot` is missing and `npm` is available
@@ -65,7 +66,7 @@ Omit `--with-dotfiles` to skip the normal zsh/tmux symlink setup.
   plugin marketplace
 - SSH defaults for ordinary `github.com` remotes plus host aliases
   `github-personal` and `github-company`
-- a healthcheck for `gh`, `az`, `amlt`, keys, skills, and `WANDB_API_KEY`
+- a healthcheck for `gh`, `az`, `amlt`, `nvitop`, keys, skills, and `WANDB_API_KEY`
 
 Authentication remains manual: run `gh auth login`, `copilot login`, `az login`,
 and `amlt project checkout ...` as needed.

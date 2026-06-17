@@ -106,6 +106,15 @@ grep -q 'pipx_package_installed wandb' "$repo_dir/ubuntu-agent/install.sh" ||
 grep -q 'python3 -m pipx install wandb' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "wandb should be installed with pipx when available"
 
+grep -q 'install_nvitop' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must install nvitop"
+
+grep -q 'pipx_package_installed nvitop' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "nvitop install must skip existing pipx nvitop package even before PATH refresh"
+
+grep -q 'python3 -m pipx install nvitop' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "nvitop should be installed with pipx when available"
+
 grep -q 'install_astronvim' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must install AstroNvim"
 
@@ -123,6 +132,12 @@ grep -q 'NVIM_APPNAME' "$repo_dir/ubuntu-agent/install.sh" ||
 
 grep -q 'ln -sfn "$nvim_install_dir/bin/nvim" "$HOME/.local/bin/nvim"' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "modern Neovim installer must put nvim on the user PATH"
+
+grep -q 'hash -r' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "modern Neovim installer must refresh the shell command cache after installing nvim"
+
+grep -q 'Neovim 0.11+ is required for AstroNvim' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "AstroNvim setup must fail clearly if Neovim remains too old"
 
 grep -q 'install_neovim=1' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must install Neovim/AstroNvim by default"
@@ -154,8 +169,8 @@ grep -q 'DOTFILES_ZSH_HANDOFF' "$repo_dir/ubuntu-agent/install.sh" ||
 grep -q 'exec zsh' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "bash-to-zsh handoff must exec zsh for interactive bash shells"
 
-grep -q 'git curl jq rg fdfind tmux zsh nvim python3 uv pre-commit wandb npm copilot gh az amlt' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent healthcheck must report nvim and wandb"
+grep -q 'git curl jq rg fdfind tmux zsh nvim python3 uv pre-commit wandb nvitop npm copilot gh az amlt' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent healthcheck must report nvim, wandb, and nvitop"
 
 grep -q 'install_github_cli' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must install GitHub CLI"

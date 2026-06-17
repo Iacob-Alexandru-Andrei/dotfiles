@@ -180,6 +180,19 @@ install_wandb() {
   fi
 }
 
+install_nvitop() {
+  if have nvitop || pipx_package_installed nvitop; then
+    return 0
+  fi
+
+  info "installing nvitop in user space"
+  if have pipx; then
+    python3 -m pipx install nvitop || python3 -m pip install --user nvitop
+  else
+    python3 -m pip install --user nvitop
+  fi
+}
+
 nvim_is_modern() {
   required_nvim_minor=11
 
@@ -239,11 +252,22 @@ ensure_modern_neovim() {
   mv "$nvim_tmp_dir/nvim-linux-x86_64" "$nvim_install_dir"
   ln -sfn "$nvim_install_dir/bin/nvim" "$HOME/.local/bin/nvim"
   rm -rf "$nvim_tmp_dir"
+  hash -r 2>/dev/null || true
+
+  if ! nvim_is_modern; then
+    info "Neovim 0.11+ is required for AstroNvim; modern Neovim install did not take effect"
+    exit 1
+  fi
 }
 
 install_astronvim() {
   if [ "$install_neovim" -eq 0 ]; then
     return 0
+  fi
+
+  if ! nvim_is_modern; then
+    info "Neovim 0.11+ is required for AstroNvim"
+    exit 1
   fi
 
   nvim_dir="$HOME/.config/nvim"
@@ -534,7 +558,7 @@ EOF
 healthcheck() {
   info ""
   info "ubuntu-agent healthcheck"
-  for cmd in git curl jq rg fdfind tmux zsh nvim python3 uv pre-commit wandb npm copilot gh az amlt; do
+  for cmd in git curl jq rg fdfind tmux zsh nvim python3 uv pre-commit wandb nvitop npm copilot gh az amlt; do
     if have "$cmd"; then
       printf '  ok      %s\n' "$cmd"
     else
@@ -574,6 +598,7 @@ apt_install_missing
 install_uv
 install_pre_commit
 install_wandb
+install_nvitop
 ensure_modern_neovim
 install_astronvim
 install_github_cli
