@@ -161,6 +161,19 @@ install_pre_commit() {
   fi
 }
 
+install_wandb() {
+  if have wandb || pipx_package_installed wandb; then
+    return 0
+  fi
+
+  info "installing wandb in user space"
+  if have pipx; then
+    python3 -m pipx install wandb || python3 -m pip install --user wandb
+  else
+    python3 -m pip install --user wandb
+  fi
+}
+
 install_github_cli() {
   if have gh; then
     return 0
@@ -372,7 +385,7 @@ run_dotfiles_install() {
 healthcheck() {
   info ""
   info "ubuntu-agent healthcheck"
-  for cmd in git curl jq rg fdfind tmux zsh python3 uv pre-commit npm copilot gh az amlt; do
+  for cmd in git curl jq rg fdfind tmux zsh python3 uv pre-commit wandb npm copilot gh az amlt; do
     if have "$cmd"; then
       printf '  ok      %s\n' "$cmd"
     else
@@ -411,6 +424,7 @@ ensure_path_block
 apt_install_missing
 install_uv
 install_pre_commit
+install_wandb
 install_github_cli
 install_copilot_cli
 install_github_hosts

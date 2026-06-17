@@ -53,6 +53,7 @@ Omit `--with-dotfiles` to skip the normal zsh/tmux symlink setup.
   `fd`, `tmux`, `zsh`, `python3`, `pipx`, and `npm`
 - user-space `uv==0.11.2`
 - user-space `pre-commit`
+- user-space `wandb`
 - GitHub Copilot CLI via npm when `copilot` is missing and `npm` is available
 - Copilot skills from source repositories and Superpowers from the official
   plugin marketplace

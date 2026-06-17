@@ -79,6 +79,18 @@ grep -q 'pipx_package_installed uv' "$repo_dir/ubuntu-agent/install.sh" ||
 grep -q 'pipx_package_installed pre-commit' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "pre-commit install must skip existing pipx pre-commit package even before PATH refresh"
 
+grep -q 'install_wandb' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must install wandb"
+
+grep -q 'pipx_package_installed wandb' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "wandb install must skip existing pipx wandb package even before PATH refresh"
+
+grep -q 'python3 -m pipx install wandb' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "wandb should be installed with pipx when available"
+
+grep -q 'git curl jq rg fdfind tmux zsh python3 uv pre-commit wandb npm copilot gh az amlt' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent healthcheck must report wandb"
+
 grep -q 'install_github_cli' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must install GitHub CLI"
 
