@@ -1,0 +1,15 @@
+# Ghostty terminfo, bundled so SSH servers render Ghostty (TERM=xterm-ghostty)
+# sessions correctly instead of falling back and garbling the line editor.
+#
+# This is a portable superset of xterm-256color (cursor addressing, colors,
+# truecolor). For the full upstream entry with every Ghostty extension, copy it
+# straight from a machine running Ghostty:
+#
+#   infocmp -x xterm-ghostty | ssh <host> tic -x -
+#
+# (The dotfiles bin/install-on-host does this automatically.)
+xterm-ghostty|ghostty|Ghostty,
+	use=xterm-256color,
+	Tc,
+	Su,
+	Smulx=\E[4:%p1%dm,

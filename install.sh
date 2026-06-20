@@ -69,6 +69,21 @@ link_file "$repo_dir/zim/.zimrc" "$HOME/.zimrc"
 link_file "$repo_dir/tmux/.tmux.conf" "$HOME/.tmux.conf"
 link_file "$repo_dir/bin/ai" "$HOME/.local/bin/ai"
 
+# Install the Ghostty terminfo so this machine renders inbound SSH sessions from
+# a Ghostty terminal (TERM=xterm-ghostty) correctly. Without it the remote line
+# editor miscomputes the cursor and the display looks doubled/garbled.
+install_terminfo() {
+  command -v tic >/dev/null 2>&1 || { warn 'tic not found; skipping terminfo (install ncurses)'; return 0; }
+  [ -f "$repo_dir/terminfo/ghostty.terminfo" ] || return 0
+  if infocmp xterm-ghostty >/dev/null 2>&1; then
+    printf 'terminfo present: xterm-ghostty\n'; return 0
+  fi
+  info 'Installing xterm-ghostty terminfo'
+  tic -x -o "$HOME/.terminfo" "$repo_dir/terminfo/ghostty.terminfo" 2>/dev/null \
+    || warn 'terminfo install failed'
+}
+install_terminfo
+
 # --------------------------------------------------------------------------
 # Platform detection
 # --------------------------------------------------------------------------
