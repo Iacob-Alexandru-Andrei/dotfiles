@@ -67,7 +67,6 @@ info 'Linking shell + tmux config'
 link_file "$repo_dir/zsh/.zshrc" "$HOME/.zshrc"
 link_file "$repo_dir/zim/.zimrc" "$HOME/.zimrc"
 link_file "$repo_dir/tmux/.tmux.conf" "$HOME/.tmux.conf"
-link_file "$repo_dir/bin/ai" "$HOME/.local/bin/ai"
 
 # Install the Ghostty terminfo so this machine renders inbound SSH sessions from
 # a Ghostty terminal (TERM=xterm-ghostty) correctly. Without it the remote line
