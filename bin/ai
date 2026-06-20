@@ -1,0 +1,82 @@
+#!/bin/sh
+# Attach/manage Claude Code instances running under dtach + launchd on the server.
+# Usage:
+#   ai attach <name>   attach to a running instance (Ctrl+\ to detach)
+#   ai list            list running instances
+#   ai logs <name>     tail instance logs
+#   ai restart <name>  restart an instance via launchd
+#   ai stop <name>     stop an instance (unload launchd plist)
+#   ai status          launchd status for known instances
+#
+# On a client (no instance plists present) commands proxy over SSH to the
+# server. Override the server with AI_REMOTE_HOST (default: mac-mini-server,
+# the permanent Tailscale MagicDNS name).
+set -u
+
+SOCK_DIR="${HOME}/.claude/run"
+PLIST_PREFIX="com.iacobalexandru.ai"
+REMOTE_HOST="${AI_REMOTE_HOST:-mac-mini-server}"
+
+# We are "local" (the server) if the custodian launchd plist is installed.
+if [ ! -f "${HOME}/Library/LaunchAgents/${PLIST_PREFIX}-custodian.plist" ]; then
+  case "${1:-list}" in
+    attach|a) exec ssh -t -o "IPQoS=throughput" "$REMOTE_HOST" "~/.claude/bin/ai $*" ;;
+    *)        exec ssh "$REMOTE_HOST" "~/.claude/bin/ai $*" ;;
+  esac
+fi
+
+case "${1:-list}" in
+  attach|a)
+    name="${2:?usage: ai attach <name>}"
+    sock="${SOCK_DIR}/${name}.sock"
+    if [ ! -S "$sock" ]; then
+      echo "No socket at ${sock} — instance not running. Try: ai restart ${name}"
+      exit 1
+    fi
+    echo "Attaching to ${name}. Press Ctrl+\\ to detach."
+    stty -ixon -ixoff 2>/dev/null || true
+    exec dtach -a "$sock" -Ez
+    ;;
+  list|ls)
+    echo "Running instances:"
+    found=0
+    for sock in "${SOCK_DIR}"/*.sock; do
+      [ -S "$sock" ] || continue
+      found=1
+      name=$(basename "$sock" .sock)
+      echo "  ${name}  (ai attach ${name})"
+    done
+    if [ "$found" -eq 0 ]; then echo "  (none)"; fi
+    ;;
+  logs|log)
+    name="${2:?usage: ai logs <name>}"
+    tail -30 "${HOME}/logs/claude/${name}-launchd.log" 2>/dev/null
+    tail -30 "${HOME}/logs/claude/${name}-$(date +%Y%m%d).log" 2>/dev/null
+    ;;
+  restart)
+    name="${2:?usage: ai restart <name>}"
+    label="${PLIST_PREFIX}-${name}"
+    echo "Restarting ${name}..."
+    launchctl kickstart -k "gui/$(id -u)/${label}" 2>/dev/null || {
+      launchctl bootout "gui/$(id -u)/${label}" 2>/dev/null
+      sleep 1
+      launchctl bootstrap "gui/$(id -u)" "${HOME}/Library/LaunchAgents/${label}.plist"
+    }
+    echo "Done. Socket should reappear at ${SOCK_DIR}/${name}.sock"
+    ;;
+  stop)
+    name="${2:?usage: ai stop <name>}"
+    label="${PLIST_PREFIX}-${name}"
+    launchctl bootout "gui/$(id -u)/${label}" 2>/dev/null || true
+    rm -f "${SOCK_DIR}/${name}.sock"
+    echo "Stopped ${name}."
+    ;;
+  status|st)
+    label="${PLIST_PREFIX}-custodian"
+    echo "=== ${label} ==="
+    launchctl print "gui/$(id -u)/${label}" 2>/dev/null | grep -iE "state =|pid =" || echo "  not loaded"
+    ;;
+  *)
+    echo "Usage: ai <attach|list|logs|restart|stop|status> [name]"
+    ;;
+esac
