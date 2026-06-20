@@ -1,0 +1,6 @@
+# Shared Ghostty settings managed by these dotfiles.
+# install.sh adds `config-file = <repo>/ghostty/config` to your real
+# ~/.config/ghostty/config, so this file is included without clobbering any
+# local Ghostty settings you keep there. Edit the theme here to change it
+# everywhere on the next `install.sh` run.
+theme = light:Alabaster,dark:Ghostty Default Style Dark

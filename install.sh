@@ -83,6 +83,23 @@ install_terminfo() {
 }
 install_terminfo
 
+# Include the dotfiles-managed Ghostty config (theme, ...) from the user's real
+# Ghostty config, without overwriting any local settings there. Idempotent.
+ensure_ghostty_config() {
+  [ -f "$repo_dir/ghostty/config" ] || return 0
+  cfg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/ghostty"
+  cfg="$cfg_dir/config"
+  include="config-file = $repo_dir/ghostty/config"
+  mkdir -p "$cfg_dir"
+  if [ -f "$cfg" ] && grep -qF "$include" "$cfg"; then
+    printf 'ghostty: dotfiles include already present\n'
+    return 0
+  fi
+  printf '%s\n' "$include" >> "$cfg"
+  info 'ghostty: linked dotfiles config (theme applied)'
+}
+ensure_ghostty_config
+
 # --------------------------------------------------------------------------
 # Platform detection
 # --------------------------------------------------------------------------
