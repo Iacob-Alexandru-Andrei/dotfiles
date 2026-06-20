@@ -142,4 +142,10 @@ export PATH="$HOME/.local/bin:$PATH"
 
 test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell_integration.zsh"
 
-export PATH="$(npm prefix -g)/bin:$PATH"
+# Add the global npm bin to PATH, but only if npm actually works. Guarded so a
+# broken/absent node install doesn't spew dyld/npm errors on every shell start.
+if (( ${+commands[npm]} )); then
+  npm_global_bin="$(npm prefix -g 2>/dev/null)/bin"
+  [[ -d "$npm_global_bin" ]] && export PATH="$npm_global_bin:$PATH"
+  unset npm_global_bin
+fi
