@@ -1,13 +1,49 @@
 #!/bin/sh
 set -eu
 
-if [ "$#" -ne 1 ]; then
-  printf 'usage: %s <ssh-host>\n' "$0" >&2
-  exit 2
-fi
-
-host=$1
 repo_url='https://github.com/Iacob-Alexandru-Andrei/dotfiles.git'
+repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+setup_ref=$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD 2>/dev/null ||
+  git -C "$repo_dir" rev-parse --short HEAD)
+install_args=''
+
+usage() {
+  cat <<'EOF' >&2
+usage: install-on-host [options] <ssh-host>
+
+Options:
+  --minimal       Run remote install.sh --minimal
+  --no-packages   Run remote install.sh --no-packages
+  --no-nvim       Run remote install.sh --no-nvim
+  -h, --help      Show this help
+EOF
+}
+
+host=''
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --minimal|--no-packages|--no-nvim)
+      install_args="$install_args $1"
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -*)
+      printf 'unknown option: %s\n' "$1" >&2
+      usage
+      exit 2
+      ;;
+    *)
+      [ -z "$host" ] || { usage; exit 2; }
+      host=$1
+      shift
+      ;;
+  esac
+done
+
+[ -n "$host" ] || { usage; exit 2; }
 
 install_terminfo() {
   term_name=${TERM:-}
@@ -41,12 +77,14 @@ install_terminfo
 
 ssh "$host" "set -eu
 if [ ! -d \"\$HOME/.dotfiles/.git\" ]; then
-  git clone '$repo_url' \"\$HOME/.dotfiles\"
+  git clone --branch '$setup_ref' '$repo_url' \"\$HOME/.dotfiles\"
 else
   git -C \"\$HOME/.dotfiles\" remote set-url origin '$repo_url'
+  git -C \"\$HOME/.dotfiles\" fetch origin '$setup_ref'
+  git -C \"\$HOME/.dotfiles\" checkout '$setup_ref'
   git -C \"\$HOME/.dotfiles\" pull --ff-only
 fi
-\"\$HOME/.dotfiles/install.sh\"
+\"\$HOME/.dotfiles/install.sh\" $install_args
 if command -v tmux >/dev/null 2>&1; then
   if TERM=\${TERM:-xterm-256color} tmux has-session 2>/dev/null || TERM=xterm-256color tmux has-session 2>/dev/null; then
     TERM=\${TERM:-xterm-256color} tmux source-file \"\$HOME/.tmux.conf\" || TERM=xterm-256color tmux source-file \"\$HOME/.tmux.conf\"

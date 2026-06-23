@@ -29,14 +29,41 @@ grep -q 'copy_key_if_requested "work GitHub default" "$work_key" "id_ed25519"' "
 grep -q 'setup_ref=' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
   fail "host installer must detect the current local ref that contains ubuntu-agent files"
 
+grep -q 'setup_ref=' "$repo_dir/bin/install-on-host" ||
+  fail "normal host installer must detect the current local ref that contains dotfiles files"
+
 grep -q -- '--skip-neovim' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
   fail "host installer must pass through --skip-neovim"
+
+grep -q -- '--minimal' "$repo_dir/bin/install-on-host" ||
+  fail "normal host installer must pass through --minimal"
+
+grep -q -- '--no-packages' "$repo_dir/bin/install-on-host" ||
+  fail "normal host installer must pass through --no-packages"
+
+grep -q -- '--no-nvim' "$repo_dir/bin/install-on-host" ||
+  fail "normal host installer must pass through --no-nvim"
+
+grep -q -- '--minimal' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
+  fail "ubuntu-agent host installer must pass through --minimal"
+
+grep -q -- '--no-packages' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
+  fail "ubuntu-agent host installer must pass through --no-packages"
+
+grep -q -- '--no-nvim' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
+  fail "ubuntu-agent host installer must pass through --no-nvim"
 
 grep -q 'git clone --branch' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
   fail "host installer must clone the selected setup ref on new remotes"
 
+grep -q 'git clone --branch' "$repo_dir/bin/install-on-host" ||
+  fail "normal host installer must clone the selected setup ref on new remotes"
+
 grep -q 'git -C.*checkout' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
   fail "host installer must switch existing remote checkouts to the selected setup ref"
+
+grep -q 'git -C.*checkout' "$repo_dir/bin/install-on-host" ||
+  fail "normal host installer must switch existing remote checkouts to the selected setup ref"
 
 if grep -q 'alex/ubuntu-agent-setup' "$repo_dir/bin/install-ubuntu-agent-on-host"; then
   fail "host installer must not hard-code the feature branch"
@@ -213,6 +240,15 @@ fi
 grep -q -- '--install-apt' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must keep --install-apt for compatibility"
 
+grep -q -- '--minimal' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must pass through --minimal to normal dotfiles installer"
+
+grep -q -- '--no-packages' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must pass through --no-packages to normal dotfiles installer"
+
+grep -q -- '--no-nvim' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must pass through --no-nvim to normal dotfiles installer"
+
 grep -q -- '--skip-apt' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must offer --skip-apt for base-image-safe runs"
 
@@ -224,6 +260,15 @@ grep -q 'install_apt=1' "$repo_dir/ubuntu-agent/install.sh" ||
 
 grep -q 'install_apt=1' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
   fail "host installer must request apt installation by default"
+
+grep -q 'dotfiles_args=' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must accumulate normal dotfiles installer args"
+
+grep -q '"$repo_dir/install.sh" $dotfiles_args' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must pass accumulated dotfiles args to install.sh"
+
+grep -q 'remote_dotfiles_args=' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
+  fail "ubuntu-agent host installer must forward normal dotfiles args"
 
 if grep -q 'ubuntu-agent' "$repo_dir/install.sh"; then
   fail "normal install.sh must not invoke ubuntu-agent setup"

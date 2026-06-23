@@ -4,10 +4,11 @@ set -eu
 with_dotfiles=0
 install_apt=1
 install_neovim=1
+dotfiles_args=''
 
 usage() {
   cat <<'EOF' >&2
-usage: ubuntu-agent/install.sh [--with-dotfiles] [--install-apt] [--skip-apt] [--skip-neovim]
+usage: ubuntu-agent/install.sh [--with-dotfiles] [--install-apt] [--skip-apt] [--skip-neovim] [--minimal] [--no-packages] [--no-nvim]
 
 Sets up an Ubuntu host for agent/Copilot work without changing the default
 dotfiles installer. Existing tools and config are detected and left in place.
@@ -31,6 +32,20 @@ while [ "$#" -gt 0 ]; do
       shift
       ;;
     --skip-neovim)
+      install_neovim=0
+      shift
+      ;;
+    --minimal)
+      dotfiles_args="$dotfiles_args --minimal"
+      install_neovim=0
+      shift
+      ;;
+    --no-packages)
+      dotfiles_args="$dotfiles_args --no-packages"
+      shift
+      ;;
+    --no-nvim)
+      dotfiles_args="$dotfiles_args --no-nvim"
       install_neovim=0
       shift
       ;;
@@ -539,7 +554,7 @@ run_dotfiles_install() {
     return 0
   fi
 
-  "$repo_dir/install.sh"
+  "$repo_dir/install.sh" $dotfiles_args
 }
 
 install_bash_zsh_handoff() {
