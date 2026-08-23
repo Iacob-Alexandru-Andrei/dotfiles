@@ -28,10 +28,19 @@ coding harness and its Copilot endpoint, then links the launcher into
 brings the pinned runtime, nine language servers, fifteen quality gates, and the
 agents and skills.
 
-It is found, never cloned: this repo does not own omp. The search order is
-`$OMP_REPO`, then `~/projects/god/repos/omp`, then a sibling of this checkout. A
-machine with none of those gets a note and an otherwise normal install — the
-shell config does not depend on it.
+It is found, never cloned: this repo does not own omp, and the `god` tree's omp
+remote is not reachable from a bare machine. The search order is `$OMP_REPO`,
+then `~/projects/god/repos/omp`, then a sibling of this checkout.
+
+A machine with none of those does **not** fail the install — the shell config
+does not depend on a coding agent — but it says so loudly, names every path it
+looked in, and repeats it in the closing summary:
+
+```
+!! omp harness NOT installed: no checkout found
+   looked in: $OMP_REPO, ~/projects/god/repos/omp, .../dotfiles/../omp
+   fix: clone the god tree to ~/projects/god, or set OMP_REPO=/path/to/omp
+```
 
 ```sh
 ./install.sh --no-omp        # shell config only, no harness

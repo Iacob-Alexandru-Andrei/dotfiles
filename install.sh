@@ -315,27 +315,46 @@ install_omp() {
     fi
   done
 
+  # ABSENCE IS REPORTED, LOUDLY, AND NAMES THE FIX. It is not a clone: the `god` tree is a
+  # submodule layout whose omp remote is not reachable from a bare machine, so `git clone`
+  # here would fail at the network with a worse message than this one. It is not fatal
+  # either -- the shell and tmux config this script exists for do not depend on a coding
+  # agent, and taking the whole install down would be the wrong trade.
+  #
+  # What it must never be is silent. `install.sh` finishing green while `omp` is missing is
+  # the setup someone discovers days later, which is exactly what this section was added to
+  # prevent. The summary at the end repeats it for the same reason.
   if [ -z "$omp_repo" ]; then
-    warn 'omp checkout not found; skipping harness'
-    printf '   expected ~/projects/god/repos/omp, or set OMP_REPO\n' >&2
+    OMP_STATUS='missing: no checkout found'
+    warn 'omp harness NOT installed: no checkout found'
+    printf '   looked in: $OMP_REPO, ~/projects/god/repos/omp, %s/../omp\n' "$repo_dir" >&2
+    printf '   fix: clone the god tree to ~/projects/god, or set OMP_REPO=/path/to/omp\n' >&2
+    printf '   then re-run: %s\n' "$0" >&2
     return 0
   fi
 
-  # `uv` builds the harness venvs and `node` runs five of the language servers.
-  # Both come from the package step above, so naming the missing one here beats
-  # a failure forty lines into someone else's script.
+  # `uv` builds the harness venvs and `node` runs five of the language servers. Both come
+  # from the package step above, so naming the missing one here beats a failure forty lines
+  # into someone else's script.
   for tool in uv node; do
-    have "$tool" || { warn "omp harness needs $tool; skipping"; return 0; }
+    if ! have "$tool"; then
+      OMP_STATUS="missing: needs $tool"
+      warn "omp harness NOT installed: $tool is missing"
+      printf '   fix: install %s, then re-run: %s\n' "$tool" "$0" >&2
+      return 0
+    fi
   done
 
   info 'Installing omp harness (language servers, gates, agents, skills)'
   if sh "$omp_repo/bin/install.sh"; then
-    # The launcher, so `omp` works from any directory. A symlink rather than a
-    # copy: it resolves its own location to find the profile, and it refuses to
-    # exec itself, so reaching it through `PATH` is safe.
+    # The launcher, so `omp` works from any directory. A symlink rather than a copy: it
+    # resolves its own location to find the profile, and it refuses to exec itself, so
+    # reaching it through `PATH` is safe.
     ln -sfn "$omp_repo/bin/omp" "$HOME/.local/bin/omp"
+    OMP_STATUS='installed'
   else
-    warn 'omp harness install reported a failure; see its output above'
+    OMP_STATUS='FAILED: see the harness output above'
+    warn 'omp harness install reported a failure'
   fi
 }
 
@@ -348,6 +367,7 @@ if [ "$INSTALL_NVIM" -eq 1 ]; then
   install_astronvim
 fi
 # After the packages, which is where `uv` and `node` come from.
+OMP_STATUS='skipped by --no-omp'
 [ "$INSTALL_OMP" -eq 1 ] && install_omp
 
 printf '\n'
@@ -355,5 +375,10 @@ info 'Done.'
 printf 'Open a new zsh session or run: exec zsh\n'
 printf 'For an existing tmux server, run: tmux source-file ~/.tmux.conf\n'
 [ "$INSTALL_NVIM" -eq 1 ] && printf 'Launch AstroNvim with: nvim\n'
-[ -x "$HOME/.local/bin/omp" ] && printf 'Start a coding session with: omp\n'
+# STATED EVERY TIME, installed or not. A summary that mentions omp only on success is one
+# where its absence looks like it was never meant to be there.
+case "$OMP_STATUS" in
+  installed) printf 'Start a coding session with: omp\n' ;;
+  *)         printf 'omp harness: %s\n' "$OMP_STATUS" >&2 ;;
+esac
 exit 0
