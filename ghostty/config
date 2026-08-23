@@ -4,3 +4,11 @@
 # local Ghostty settings you keep there. Edit the theme here to change it
 # everywhere on the next `install.sh` run.
 theme = light:Alabaster,dark:Ghostty Default Style Dark
+
+# Treat LEFT Option as Alt so TUIs (omp's Alt+A agent hub, Alt+M model
+# selector, ...) receive real Alt chords instead of composed Unicode.
+# Ghostty only defaults this on for U.S. Standard/International layouts;
+# on British it is off, so Option+A emits "å" and the TUI never sees it.
+# Left-only deliberately: the British layout puts # on Option+3, and the
+# RIGHT Option key keeps composing it.
+macos-option-as-alt = left

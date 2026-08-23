@@ -109,6 +109,12 @@ grep -q 'Iacob-Alexandru-Andrei/god-skills.git' "$repo_dir/ubuntu-agent/install.
 grep -q 'superpowers@superpowers-marketplace' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must install Superpowers from the official Copilot plugin marketplace"
 
+grep -q 'DietrichGebert/ponytail' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must add the Ponytail Copilot plugin marketplace"
+
+grep -q 'ponytail@ponytail' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must install Ponytail from the Copilot plugin marketplace"
+
 grep -q 'install_skill_links_from_repo' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must link skill directories from cloned source repos"
 

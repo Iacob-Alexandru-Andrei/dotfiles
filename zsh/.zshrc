@@ -149,3 +149,19 @@ if (( ${+commands[npm]} )); then
   [[ -d "$npm_global_bin" ]] && export PATH="$npm_global_bin:$PATH"
   unset npm_global_bin
 fi
+# Load W&B API key from private local file.
+if [ -r "$HOME/.ssh/wandb_api_key" ]; then
+  export WANDB_API_KEY="$(tr -d '\r\n' < "$HOME/.ssh/wandb_api_key")"
+fi
+
+# Editor for anything that shells out to one: git commit messages, and omp's
+# Ctrl+G, which opens the current draft in $VISUAL and waits for it to exit.
+# Helix is the choice because that use is a thirty-second edit in a terminal
+# that is already busy: it starts instantly, ships LSP and syntax highlighting
+# with no config file to carry, and returns the terminal when it exits. A GUI
+# editor works here but steals focus to another window, which is the wrong
+# shape for editing a prompt.
+if command -v hx >/dev/null 2>&1; then
+  export EDITOR=hx
+  export VISUAL=hx
+fi

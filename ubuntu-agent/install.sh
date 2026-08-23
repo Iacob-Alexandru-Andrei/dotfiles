@@ -421,17 +421,38 @@ install_skill_links_from_repo() {
   done
 }
 
-install_superpowers_plugin() {
+install_copilot_marketplace_plugin() {
+  plugin_label=$1
+  marketplace_repo=$2
+  plugin_ref=$3
+  update_name=$4
+
   if ! have copilot; then
-    info "copilot not found; skipping Superpowers plugin install"
+    info "copilot not found; skipping $plugin_label plugin install"
     return 0
   fi
 
-  info "installing Superpowers from official Copilot plugin marketplace"
-  copilot plugin marketplace add obra/superpowers-marketplace >/dev/null 2>&1 || true
-  copilot plugin install superpowers@superpowers-marketplace >/dev/null 2>&1 ||
-    copilot plugin update superpowers >/dev/null 2>&1 ||
-    info "Superpowers plugin install/update did not complete; run: copilot plugin install superpowers@superpowers-marketplace"
+  info "installing $plugin_label from official Copilot plugin marketplace"
+  copilot plugin marketplace add "$marketplace_repo" >/dev/null 2>&1 || true
+  copilot plugin install "$plugin_ref" >/dev/null 2>&1 ||
+    copilot plugin update "$update_name" >/dev/null 2>&1 ||
+    info "$plugin_label plugin install/update did not complete; run: copilot plugin install $plugin_ref"
+}
+
+install_superpowers_plugin() {
+  install_copilot_marketplace_plugin \
+    "Superpowers" \
+    "obra/superpowers-marketplace" \
+    "superpowers@superpowers-marketplace" \
+    "superpowers"
+}
+
+install_ponytail_plugin() {
+  install_copilot_marketplace_plugin \
+    "Ponytail" \
+    "DietrichGebert/ponytail" \
+    "ponytail@ponytail" \
+    "ponytail"
 }
 
 install_copilot_skills() {
@@ -460,6 +481,7 @@ install_copilot_skills() {
   install_skill_links_from_repo "$god_skills_repo" "$god_skills_repo/memory/skills"
   install_skill_links_from_repo "$academic_skills_repo" "$academic_skills_repo"
   install_superpowers_plugin
+  install_ponytail_plugin
 
   info "Copilot skills directory: $HOME/.copilot/skills"
 }

@@ -5,11 +5,13 @@ set -eu
 # - Symlinks zsh / zim / tmux configs (always).
 # - Installs modern CLI tools the configs expect (zoxide, fzf, eza, bat, ...).
 # - Installs Neovim + AstroNvim.
+# - Installs the omp coding harness and its Copilot endpoint.
 #
 # Usage:
-#   ./install.sh                full setup (symlinks + packages + AstroNvim)
+#   ./install.sh                full setup (symlinks + packages + AstroNvim + omp)
 #   ./install.sh --minimal      symlinks only (no package installs)
 #   ./install.sh --no-nvim      everything except Neovim/AstroNvim
+#   ./install.sh --no-omp       everything except the omp harness
 #   ./install.sh --no-packages  alias of --minimal
 
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
@@ -17,11 +19,13 @@ timestamp=$(date +%Y%m%d%H%M%S)
 
 INSTALL_PACKAGES=1
 INSTALL_NVIM=1
+INSTALL_OMP=1
 for arg in "$@"; do
   case "$arg" in
-    --minimal|--no-packages) INSTALL_PACKAGES=0; INSTALL_NVIM=0 ;;
+    --minimal|--no-packages) INSTALL_PACKAGES=0; INSTALL_NVIM=0; INSTALL_OMP=0 ;;
     --no-nvim) INSTALL_NVIM=0 ;;
-    -h|--help) printf 'usage: %s [--minimal] [--no-nvim]\n' "$0"; exit 0 ;;
+    --no-omp) INSTALL_OMP=0 ;;
+    -h|--help) printf 'usage: %s [--minimal] [--no-nvim] [--no-omp]\n' "$0"; exit 0 ;;
     *) printf 'unknown option: %s\n' "$arg" >&2; exit 2 ;;
   esac
 done
@@ -281,6 +285,61 @@ install_astronvim() {
 }
 
 # --------------------------------------------------------------------------
+# omp coding harness + Copilot endpoint
+# --------------------------------------------------------------------------
+# ONE COMMAND, because `omp/bin/install.sh` already installs both. It provisions
+# the pinned runtime, nine language servers, fifteen gate tools, the agents and
+# skills, and -- when the `agentic-search` checkout is beside it -- renders the
+# Copilot endpoint into the same profile. Reimplementing any part of that here
+# would be a second copy to keep in step with the first.
+#
+# It is FOUND, not cloned. This repository does not own omp and has no business
+# deciding where it lives: `$OMP_REPO` answers first for anyone whose layout
+# differs, then the standard `god` checkout, then a sibling of this repo. A
+# machine with none gets a note saying where to look, not a failure -- the shell
+# config this installer exists for works perfectly well without a coding agent.
+install_omp() {
+  omp_repo=""
+  for candidate in \
+    "${OMP_REPO:-}" \
+    "$HOME/projects/god/repos/omp" \
+    "$repo_dir/../omp"; do
+    [ -n "$candidate" ] || continue
+    if [ -f "$candidate/bin/install.sh" ]; then
+      # `CDPATH=` is a prefix assignment, not an empty variable: without it a user's
+      # CDPATH can make `cd` land somewhere else and print where it went. Same idiom as
+      # `repo_dir` at the top of this file.
+      # shellcheck disable=SC1007
+      omp_repo=$(CDPATH= cd -- "$candidate" && pwd -P)
+      break
+    fi
+  done
+
+  if [ -z "$omp_repo" ]; then
+    warn 'omp checkout not found; skipping harness'
+    printf '   expected ~/projects/god/repos/omp, or set OMP_REPO\n' >&2
+    return 0
+  fi
+
+  # `uv` builds the harness venvs and `node` runs five of the language servers.
+  # Both come from the package step above, so naming the missing one here beats
+  # a failure forty lines into someone else's script.
+  for tool in uv node; do
+    have "$tool" || { warn "omp harness needs $tool; skipping"; return 0; }
+  done
+
+  info 'Installing omp harness (language servers, gates, agents, skills)'
+  if sh "$omp_repo/bin/install.sh"; then
+    # The launcher, so `omp` works from any directory. A symlink rather than a
+    # copy: it resolves its own location to find the profile, and it refuses to
+    # exec itself, so reaching it through `PATH` is safe.
+    ln -sfn "$omp_repo/bin/omp" "$HOME/.local/bin/omp"
+  else
+    warn 'omp harness install reported a failure; see its output above'
+  fi
+}
+
+# --------------------------------------------------------------------------
 # Run
 # --------------------------------------------------------------------------
 [ "$INSTALL_PACKAGES" -eq 1 ] && install_packages
@@ -288,10 +347,13 @@ if [ "$INSTALL_NVIM" -eq 1 ]; then
   install_neovim
   install_astronvim
 fi
+# After the packages, which is where `uv` and `node` come from.
+[ "$INSTALL_OMP" -eq 1 ] && install_omp
 
 printf '\n'
 info 'Done.'
 printf 'Open a new zsh session or run: exec zsh\n'
 printf 'For an existing tmux server, run: tmux source-file ~/.tmux.conf\n'
 [ "$INSTALL_NVIM" -eq 1 ] && printf 'Launch AstroNvim with: nvim\n'
+[ -x "$HOME/.local/bin/omp" ] && printf 'Start a coding session with: omp\n'
 exit 0

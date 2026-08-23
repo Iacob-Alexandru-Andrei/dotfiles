@@ -20,6 +20,24 @@ load `~/.tmux.conf` automatically. Existing tmux servers need a reload:
 tmux source-file ~/.tmux.conf
 ```
 
+## Coding harness
+
+`install.sh` also installs the [omp](https://github.com/Iacob-Alexandru-Andrei/omp)
+coding harness and its Copilot endpoint, then links the launcher into
+`~/.local/bin/omp` so `omp` starts a session from any directory. One command
+brings the pinned runtime, nine language servers, fifteen quality gates, and the
+agents and skills.
+
+It is found, never cloned: this repo does not own omp. The search order is
+`$OMP_REPO`, then `~/projects/god/repos/omp`, then a sibling of this checkout. A
+machine with none of those gets a note and an otherwise normal install — the
+shell config does not depend on it.
+
+```sh
+./install.sh --no-omp        # shell config only, no harness
+OMP_REPO=~/src/omp ./install.sh
+```
+
 ## Install on an SSH host
 
 From a machine that already has this repo:
