@@ -268,6 +268,12 @@ Host mac-mini-server
 Host sandbox_2
       HostName BOX443.example.com
       User someone@example.com
+
+# One block naming two aliases, which is legal ssh config and easy to half-read: taking
+# only the first field carries sandbox_gpu and silently loses sandbox_gpu2.
+Host sandbox_gpu sandbox_gpu2
+      HostName BOXGPU.example.com
+      User someone@example.com
 CFG
 
 run_mesh() {
@@ -297,6 +303,11 @@ for expected in 'Host sandbox' 'Host sandbox_2' 'BOX444.example.com' 'BOX443.exa
   'IdentityFile ~/.ssh/sandbox-mesh' 'IdentitiesOnly yes'; do
   grep -q "$expected" "$MESH_PAYLOAD" || fail "mesh block must contain: $expected"
 done
+
+# A `Host a b` block names both aliases, and both must survive: dropping the second is a
+# silent loss -- the name simply stops resolving on the remote, with nothing to read.
+grep -q 'Host sandbox_gpu sandbox_gpu2' "$MESH_PAYLOAD" ||
+  fail 'mesh block must carry every alias of a multi-pattern Host line'
 
 # Scope: only sandboxes. mac-mini-server authenticates with a key that means something
 # else on the remote, so pulling it into the mesh would break it.
@@ -353,7 +364,18 @@ fi
 # second run replaces the block rather than stacking another copy.
 remote_home="$work_root/remote-home"
 mkdir -p "$remote_home/.ssh"
-printf 'Host preexisting\n  HostName keep.example.com\n' > "$remote_home/.ssh/config"
+# The pre-existing config carries a hand-added `Host sandbox_2` pointing somewhere else,
+# because that is what the sandboxes actually had. ssh takes the FIRST value it sees, so
+# this is the case that decides whether the mesh block is real config or decoration.
+cat > "$remote_home/.ssh/config" <<'CFG'
+Host sandbox_2
+  HostName 10.0.0.253
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
+
+Host preexisting
+  HostName keep.example.com
+CFG
 chmod 600 "$remote_home/.ssh/config"
 
 for run in 1 2; do
@@ -368,14 +390,37 @@ ends=$(grep -c 'END dotfiles sandbox mesh' "$remote_config")
 [ "$begins" -eq 1 ] || fail "two runs must leave one BEGIN marker, got $begins"
 [ "$ends" -eq 1 ] || fail "two runs must leave one END marker, got $ends"
 
+# Three Host lines from the mesh block -- sandbox, sandbox_2, and the paired
+# `sandbox_gpu sandbox_gpu2` -- plus the hand-added one that is deliberately left alone.
 hosts=$(grep -c '^Host sandbox' "$remote_config")
-[ "$hosts" -eq 2 ] || fail "two runs must leave two sandbox hosts, got $hosts"
+[ "$hosts" -eq 4 ] || fail "two runs must leave four sandbox host lines, got $hosts"
+
+# Precedence, asked of ssh rather than of line numbers. ssh takes the FIRST value it sees
+# for HostName and ignores later ones, so a mesh block sitting below a hand-added
+# `Host sandbox_2` is decoration. `ssh -G -F` resolves the file exactly as a connection
+# would, which is the only thing that settles this; ordering is the implementation.
+if command -v ssh >/dev/null 2>&1; then
+  resolved=$(command ssh -G -F "$remote_config" sandbox_2 2>/dev/null |
+    awk 'tolower($1) == "hostname" { print $2; exit }')
+  # ssh lowercases what it reports, so the comparison is made in one case.
+  [ "$(printf '%s' "$resolved" | tr 'A-Z' 'a-z')" = 'box443.example.com' ] ||
+    fail "ssh must resolve sandbox_2 through the mesh block, got '$resolved'"
+
+  identity=$(command ssh -G -F "$remote_config" sandbox_2 2>/dev/null |
+    awk 'tolower($1) == "identityfile" { print $2; exit }')
+  case $identity in
+    *sandbox-mesh) ;;
+    *) fail "ssh must offer the mesh key first for sandbox_2, got '$identity'" ;;
+  esac
+fi
 
 # The block is additive: what was in the config before it must still be there.
 grep -q 'Host preexisting' "$remote_config" ||
   fail 'the mesh block must not discard pre-existing config'
 grep -q 'keep.example.com' "$remote_config" ||
   fail 'the mesh block must not discard pre-existing host settings'
+grep -q '10.0.0.253' "$remote_config" ||
+  fail 'the mesh block must not delete a hand-added host, only outrank it'
 
 mode=$(ls -l "$remote_config" | cut -c1-10)
 case $mode in

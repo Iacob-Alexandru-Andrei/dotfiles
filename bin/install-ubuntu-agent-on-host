@@ -232,9 +232,15 @@ install_mesh() {
   if [ -f "$HOME/.ssh/config" ]; then
     mesh_hosts=$(awk '
       tolower($1) == "host" {
-        inblock = ($2 ~ /^sandbox/)
+        # `Host a b` is one block naming two aliases, so every field is considered and the
+        # sandbox ones are carried over together. Reading only $2 drops the rest silently.
+        names = ""
+        for (i = 2; i <= NF; i++) {
+          if ($i ~ /^sandbox/) { names = names " " $i }
+        }
+        inblock = (names != "")
         if (inblock) {
-          printf "\nHost %s\n", $2
+          printf "\nHost%s\n", names
           print "  IdentityFile ~/.ssh/sandbox-mesh"
           print "  IdentitiesOnly yes"
           print "  StrictHostKeyChecking no"
@@ -265,11 +271,16 @@ touch \"\$config\"
 # before the new text was complete, so an interruption there costs you the file.
 next=\"\$config.mesh.\$\$\"
 trap 'rm -f \"\$next\"' EXIT INT TERM
+# The block goes FIRST. ssh takes the first value it sees for HostName, User, and
+# IdentitiesOnly, so a hand-added \`Host sandbox_2\` earlier in the file would decide where
+# the connection goes and this block would only be consulted for what that one omitted.
+# Found live: an unmanaged block pinned sandbox_2 to a bare 10.209.224.153 while this one
+# names GCRSANDBOX443.redmond.corp.microsoft.com -- the IP wins until the IP moves.
 {
-  awk -v b='$mesh_begin' -v e='$mesh_end' '\$0 == b { skip = 1; next } \$0 == e { skip = 0; next } !skip { print }' \"\$config\"
   printf '%s\n' '$mesh_begin'
   cat
   printf '%s\n' '$mesh_end'
+  awk -v b='$mesh_begin' -v e='$mesh_end' '\$0 == b { skip = 1; next } \$0 == e { skip = 0; next } !skip { print }' \"\$config\"
 } > \"\$next\"
 chmod 600 \"\$next\"
 mv \"\$next\" \"\$config\""
