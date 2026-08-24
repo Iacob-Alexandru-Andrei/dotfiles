@@ -423,14 +423,49 @@ install_lint_defaults() {
   # is invoked by that absolute path, or through a profile that puts `tools/env/bin` on
   # PATH for the session -- `ty check` as a bare word will not find it, by design.
   #
-  # Not registered as an LSP. omp's lsp.json carries a ONE SERVER PER JOB rule and
-  # pyright already holds the type-intelligence job for Python; running both would put
-  # two indexers and two sets of type diagnostics on the same file. Swapping the two is
-  # an lsp.json edit made deliberately, not a default this installer picks.
+  # Not registered as an LSP BY DEFAULT. omp's lsp.json carries a ONE SERVER PER JOB
+  # rule and pyright already holds the type-intelligence job for Python; enabling both
+  # would put two indexers and two sets of type diagnostics on the same file.
+  #
+  # But the swap is a supported, per-project mechanism rather than a hand-edit of a
+  # generated file: `<project>/.omp/lsp.json` outranks the agent directory's
+  # (omp://lsp-config.md:29-30). The TEMPLATE below disables pyright and enables ty
+  # together, which is the only combination that respects the rule. Verified end to end
+  # before it was shipped: with it in place `lsp status` reports `ty (ready)`, pyright
+  # never spawns, and diagnostics arrive tagged `[ty]`.
+  #
+  # It is rendered INTO THE CONFIG DIRECTORY, never into a project. Placing it under
+  # some checkout would be this installer choosing a per-project policy it has no
+  # business choosing; copying it is the deliberate act that selects ty there.
+  #
+  # Rendered rather than copied because the command must be absolute: ty is off PATH
+  # by design, so a bare `ty` resolves for nobody and the server silently never starts.
+  # The tracked file carries a placeholder, so no machine's `$HOME` is committed and the
+  # substitution below is what makes it correct on this one.
   ty_cfg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/ty"
   mkdir -p "$ty_cfg_dir"
   cp "$repo_dir/lint/ty/ty.toml" "$ty_cfg_dir/ty.toml"
   info "ty defaults installed at $ty_cfg_dir/ty.toml"
+
+  # Rendered with python's json rather than `sed`: the replacement is a filesystem path,
+  # and `sed` would take `&` in it as "the whole match" and `#` as the delimiter. A home
+  # directory containing either is unusual, not impossible, and the failure would be a
+  # silently malformed config -- which presents as "the server just never starts".
+  ty_lsp_src="$repo_dir/lint/ty/lsp-ty.json"
+  ty_bin="${PI_CODING_AGENT_DIR:-$HOME/.omp/agent}/tools/env/bin/ty"
+  if [ -f "$ty_lsp_src" ] && have python3; then
+    python3 - "$ty_lsp_src" "$ty_cfg_dir/lsp-ty.json" "$ty_bin" <<'PY'
+import json
+import pathlib
+import sys
+
+src, dest, ty_bin = (pathlib.Path(a) for a in sys.argv[1:4])
+config = json.loads(src.read_text(encoding="utf-8"))
+config["servers"]["ty"]["command"] = str(ty_bin)
+dest.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+PY
+    info "ty LSP template rendered at $ty_cfg_dir/lsp-ty.json (copy to <project>/.omp/lsp.json to select ty there)"
+  fi
 }
 
 # The omp harness. This is the layer that actually brings language servers to the box:

@@ -1,0 +1,13 @@
+{
+  "//": "Drop-in at <project>/.omp/lsp.json to swap pyright for ty IN THIS PROJECT ONLY. Per omp://lsp-config.md:29-30, a cwd .omp/lsp.json outranks the agent directory's, so nothing generated is edited and no other project is affected. Both keys are required together: omp's ONE SERVER PER JOB rule means enabling ty without disabling pyright puts two type servers and two indexers on the same file. Verified: with this file, 'lsp status' reports ty (ready) and pyright never spawns, and diagnostics arrive tagged [ty].",
+  "servers": {
+    "pyright": { "disabled": true },
+    "ty": {
+      "command": "REPLACE_WITH_ABSOLUTE_TY_PATH",
+      "args": ["server"],
+      "fileTypes": [".py", ".pyi"],
+      "languageId": "python",
+      "rootMarkers": [".omp", ".git", "pyproject.toml", "ty.toml"]
+    }
+  }
+}

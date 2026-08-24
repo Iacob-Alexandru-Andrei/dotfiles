@@ -428,6 +428,18 @@ grep -q 'TRY003' "$lint_home/.config/ruff/ruff.toml" ||
 grep -q 'error-on-warning' "$repo_dir/lint/ty/ty.toml" ||
   fail 'the shipped ty.toml must keep warnings out of the exit code'
 
+# The ty LSP template is rendered into the CONFIG dir, never into a project: placing it
+# under a checkout would be the installer choosing a per-project policy. Its command must
+# be absolute, since ty is deliberately off PATH and a bare name starts no server.
+[ -f "$lint_home/.config/ty/lsp-ty.json" ] ||
+  fail 'install_lint_defaults must render the ty LSP template'
+grep -q '"REPLACE_WITH_ABSOLUTE_TY_PATH"' "$lint_home/.config/ty/lsp-ty.json" &&
+  fail 'the rendered template still carries the placeholder command'
+grep -q '"disabled": true' "$lint_home/.config/ty/lsp-ty.json" ||
+  fail 'the ty template must disable pyright; two type servers break ONE SERVER PER JOB'
+grep -q 'REPLACE_WITH_ABSOLUTE_TY_PATH' "$repo_dir/lint/ty/lsp-ty.json" ||
+  fail 'the TRACKED template must keep the placeholder, not a machine-specific path'
+
 rm -rf "$lint_home"
 
 grep -q 'install_lint_defaults' "$repo_dir/ubuntu-agent/install.sh" ||
