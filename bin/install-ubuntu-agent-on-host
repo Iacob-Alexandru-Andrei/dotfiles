@@ -13,11 +13,19 @@ with_dotfiles=1
 install_apt=1
 install_neovim=1
 dotfiles_args=''
+want_mesh=0
+mesh_key=''
+mesh_begin='# BEGIN dotfiles sandbox mesh'
+mesh_end='# END dotfiles sandbox mesh'
 
 # The key each account signs with here, so neither has to be typed. An explicit
 # --personal-key/--work-key still wins; this is the answer when nothing is given.
 default_personal_key="$HOME/.ssh/id_ed25519_github_personal"
 default_work_key="$HOME/.ssh/id_ed25519"
+
+# The key the sandboxes accept. `ssh -G sandbox` lists it first, ahead of the defaults it
+# would fall back to, so this is what actually authenticates rather than a guess.
+default_mesh_key="$HOME/.ssh/id_rsa"
 
 usage() {
   cat <<'EOF' >&2
@@ -26,8 +34,11 @@ usage: install-ubuntu-agent-on-host [options] <ssh-host>
 Options:
   --personal            Install personal GitHub auth (the default when neither is given)
   --work                Install work GitHub auth; pass both flags to install both
+  --mesh                Also install the sandbox key and sandbox host aliases, so the
+                        remote can ssh to the other sandboxes the way this machine does
   --personal-key PATH   Personal key to copy, overriding the discovered one
   --work-key PATH       Work key to copy, overriding the discovered one
+  --mesh-key PATH       Sandbox key to copy, overriding the discovered one
   --skip-dotfiles       Do not run the normal ~/.dotfiles/install.sh on remote
   --skip-apt            Do not install missing Ubuntu packages
   --install-apt         Install missing Ubuntu packages (default; kept for compatibility)
@@ -51,6 +62,16 @@ while [ "$#" -gt 0 ]; do
     --work)
       want_work=1
       shift
+      ;;
+    --mesh)
+      want_mesh=1
+      shift
+      ;;
+    --mesh-key)
+      [ "$#" -ge 2 ] || { usage; exit 2; }
+      mesh_key=$2
+      want_mesh=1
+      shift 2
       ;;
     --personal-key)
       [ "$#" -ge 2 ] || { usage; exit 2; }
@@ -146,6 +167,9 @@ fi
 if [ "$want_work" -eq 1 ]; then
   work_key=$(resolve_key work "$work_key" "$default_work_key")
 fi
+if [ "$want_mesh" -eq 1 ]; then
+  mesh_key=$(resolve_key mesh "$mesh_key" "$default_mesh_key")
+fi
 
 install_terminfo() {
   term_name=${TERM:-}
@@ -197,6 +221,60 @@ copy_key_if_requested() {
   fi
 }
 
+# The sandboxes accept one key, and their aliases live only in this machine's
+# ~/.ssh/config -- a remote agent needs both to reach them. Scoped to `sandbox*` on
+# purpose: `mac-mini-server` authenticates with id_ed25519, which on the remote is a
+# GitHub key, so rewriting every host onto the mesh key would break it.
+install_mesh() {
+  [ "$want_mesh" -eq 1 ] || return 0
+
+  mesh_hosts=''
+  if [ -f "$HOME/.ssh/config" ]; then
+    mesh_hosts=$(awk '
+      tolower($1) == "host" {
+        inblock = ($2 ~ /^sandbox/)
+        if (inblock) {
+          printf "\nHost %s\n", $2
+          print "  IdentityFile ~/.ssh/sandbox-mesh"
+          print "  IdentitiesOnly yes"
+          print "  StrictHostKeyChecking no"
+          print "  UserKnownHostsFile /dev/null"
+        }
+        next
+      }
+      inblock && tolower($1) == "hostname" { printf "  HostName %s\n", $2 }
+      inblock && tolower($1) == "user" { printf "  User %s\n", $2 }
+    ' "$HOME/.ssh/config")
+  fi
+
+  [ -n "$mesh_hosts" ] || {
+    printf 'no sandbox hosts found in %s/.ssh/config; nothing to mesh\n' "$HOME" >&2
+    exit 1
+  }
+
+  copy_key_if_requested "sandbox mesh" "$mesh_key" "sandbox-mesh"
+
+  printf 'installing sandbox host aliases on remote ~/.ssh/config\n'
+  printf '%s\n' "$mesh_hosts" | ssh "$host" "set -eu
+umask 077
+mkdir -p \"\$HOME/.ssh\"
+chmod 700 \"\$HOME/.ssh\"
+config=\"\$HOME/.ssh/config\"
+touch \"\$config\"
+# Built whole, then renamed over the original. Writing in place would truncate the config
+# before the new text was complete, so an interruption there costs you the file.
+next=\"\$config.mesh.\$\$\"
+trap 'rm -f \"\$next\"' EXIT INT TERM
+{
+  awk -v b='$mesh_begin' -v e='$mesh_end' '\$0 == b { skip = 1; next } \$0 == e { skip = 0; next } !skip { print }' \"\$config\"
+  printf '%s\n' '$mesh_begin'
+  cat
+  printf '%s\n' '$mesh_end'
+} > \"\$next\"
+chmod 600 \"\$next\"
+mv \"\$next\" \"\$config\""
+}
+
 install_terminfo
 
 # Keys go on FIRST. They are the part of this script that cannot be done by hand later,
@@ -216,6 +294,12 @@ if [ "$want_personal" -eq 1 ]; then
 else
   copy_key_if_requested "work GitHub default" "$work_key" "id_ed25519"
 fi
+
+# Also in the keys-first phase, and for the same reason: the mesh is what lets an agent on
+# the remote reach the other sandboxes, so it must survive a checkout this script refuses
+# to touch. The block carries its own markers, so the remote install.sh's github-hosts
+# block -- which only strips its own -- appends alongside it rather than over it.
+install_mesh
 
 # A hand-edit on the remote is someone's work: it is neither discarded nor moved. The run
 # stops and says which files and what to do, having already installed the keys above --

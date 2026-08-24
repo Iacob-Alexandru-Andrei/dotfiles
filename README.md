@@ -91,6 +91,24 @@ Both accounts land on the remote as `~/.ssh/github-personal` and
 unqualified `git@github.com:...` reads `~/.ssh/id_ed25519`, which personal
 claims whenever personal was selected; a work-only install gives it to work.
 
+`--mesh` answers a different question from the account flags: not which GitHub
+the remote signs as, but whether it can `ssh` where this machine can. It copies
+the key the sandboxes accept to `~/.ssh/sandbox-mesh` and writes the `sandbox*`
+host aliases from your `~/.ssh/config` into the remote's, so an agent running
+there reaches the other boxes by the same names you use:
+
+```sh
+~/.dotfiles/bin/install-ubuntu-agent-on-host --mesh <ssh-host>
+```
+
+Only `sandbox*` hosts are carried. Other entries authenticate with keys that
+mean something else on the remote -- `mac-mini-server` uses `id_ed25519`, which
+there is a GitHub key -- so meshing them would break them. The block is written
+between its own markers and the file is replaced by rename, so re-running
+updates it in place rather than stacking copies, and the installer's
+GitHub-hosts block is left alone. `--mesh-key PATH` overrides the discovered
+key.
+
 See [`ubuntu-agent/README.md`](ubuntu-agent/README.md) for details. Missing apt
 packages are installed by default; pass `--skip-apt` if you only want the script
 to report them. Neovim 0.11+/AstroNvim is installed by default; pass

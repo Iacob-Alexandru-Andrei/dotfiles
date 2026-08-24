@@ -63,6 +63,19 @@ for arg in "$@"; do
       [ -z "${SSH_STUB_FAIL:-}" ] || exit 1
       exit 0
       ;;
+    # The mesh writes the host block over stdin, so the payload is only observable here.
+    # When REMOTE_HOME is set the command body is *executed* against it rather than
+    # recorded -- recording proves the driver sent something, running it proves the thing
+    # it sent does what it claims to the file it claims.
+    *ssh/config*)
+      printf 'ssh mesh-config\n' >> "$RECORD"
+      if [ -n "${REMOTE_HOME:-}" ]; then
+        HOME="$REMOTE_HOME" sh -c "$arg"
+        exit $?
+      fi
+      cat >> "$MESH_PAYLOAD"
+      exit 0
+      ;;
   esac
 done
 exit 0
@@ -228,6 +241,147 @@ cp "$RECORD" "$transcript"
 assert_copy "$transcript" github-personal "$PERSONAL" 'checkout failure'
 assert_copy "$transcript" github-company "$WORK" 'checkout failure'
 assert_copy "$transcript" id_ed25519 "$PERSONAL" 'checkout failure'
+
+# --- mesh -------------------------------------------------------------------------
+#
+# The mesh answers a different question from the account flags: not "which GitHub am I",
+# but "can this host ssh where I can". So it is asserted separately, and asserted to be
+# independent of the account selection.
+MESH_PAYLOAD="$work_root/mesh"
+export MESH_PAYLOAD
+
+mesh_home="$work_root/mesh-home"
+mkdir -p "$mesh_home/.ssh"
+printf 'PERSONAL-PRIVATE\n' > "$mesh_home/.ssh/id_ed25519_github_personal"
+printf 'WORK-PRIVATE\n' > "$mesh_home/.ssh/id_ed25519"
+printf 'MESH-PRIVATE\n' > "$mesh_home/.ssh/id_rsa"
+cat > "$mesh_home/.ssh/config" <<'CFG'
+Host sandbox
+      HostName BOX444.example.com
+      User someone@example.com
+
+Host mac-mini-server
+      HostName 100.125.241.22
+      User iacobalexandru
+      IdentityFile ~/.ssh/id_ed25519
+
+Host sandbox_2
+      HostName BOX443.example.com
+      User someone@example.com
+CFG
+
+run_mesh() {
+  : > "$RECORD"
+  : > "$MESH_PAYLOAD"
+  HOME="$mesh_home" PATH="$bin_dir:$PATH" TERM='' sh "$driver" "$@" test-host \
+    > "$work_root/mesh.out" 2>&1
+}
+
+# Off by default: an ordinary install must not copy a sandbox key or touch the config.
+run_mesh --personal || fail 'plain --personal run must succeed'
+cp "$RECORD" "$transcript"
+if grep -q 'sandbox-mesh' "$transcript"; then
+  fail 'without --mesh, no sandbox key may be copied'
+fi
+if grep -q 'mesh-config' "$transcript"; then
+  fail 'without --mesh, the remote ssh config must not be written'
+fi
+
+# With --mesh: the key lands under its own name, and the block carries both sandboxes.
+run_mesh --personal --mesh || fail '--mesh run must succeed'
+cp "$RECORD" "$transcript"
+assert_copy "$transcript" sandbox-mesh id_rsa '--mesh'
+grep -q 'ssh mesh-config' "$transcript" || fail '--mesh must write the remote ssh config'
+
+for expected in 'Host sandbox' 'Host sandbox_2' 'BOX444.example.com' 'BOX443.example.com' \
+  'IdentityFile ~/.ssh/sandbox-mesh' 'IdentitiesOnly yes'; do
+  grep -q "$expected" "$MESH_PAYLOAD" || fail "mesh block must contain: $expected"
+done
+
+# Scope: only sandboxes. mac-mini-server authenticates with a key that means something
+# else on the remote, so pulling it into the mesh would break it.
+if grep -q 'mac-mini-server' "$MESH_PAYLOAD"; then
+  fail 'mesh block must not claim non-sandbox hosts'
+fi
+if grep -q '100.125.241.22' "$MESH_PAYLOAD"; then
+  fail 'mesh block must not carry non-sandbox hostnames'
+fi
+
+# Independent of account selection: --work --mesh installs the work account and the mesh,
+# and the mesh key is not confused for a GitHub one.
+run_mesh --work --mesh || fail '--work --mesh run must succeed'
+cp "$RECORD" "$transcript"
+assert_copy "$transcript" sandbox-mesh id_rsa '--work --mesh'
+assert_copy "$transcript" github-personal '' '--work --mesh'
+
+# The mesh is part of the keys-first phase: a checkout that fails afterwards must leave
+# the host meshed, or an agent there cannot reach anything.
+: > "$RECORD"
+: > "$MESH_PAYLOAD"
+if SSH_STUB_FAIL=1 HOME="$mesh_home" PATH="$bin_dir:$PATH" TERM='' \
+  sh "$driver" --personal --mesh test-host >/dev/null 2>&1; then
+  fail 'a failing checkout update must still fail the run'
+fi
+cp "$RECORD" "$transcript"
+assert_copy "$transcript" sandbox-mesh id_rsa 'checkout failure'
+grep -q 'ssh mesh-config' "$transcript" || fail 'mesh config must survive a failed checkout'
+
+# A missing mesh key is refused, not silently skipped.
+bare_home="$work_root/bare-home"
+mkdir -p "$bare_home/.ssh"
+printf 'PERSONAL-PRIVATE\n' > "$bare_home/.ssh/id_ed25519_github_personal"
+cp "$mesh_home/.ssh/config" "$bare_home/.ssh/config"
+if HOME="$bare_home" PATH="$bin_dir:$PATH" TERM='' sh "$driver" --mesh test-host \
+  >/dev/null 2>&1; then
+  fail 'a --mesh run with no discoverable sandbox key must fail'
+fi
+
+# A config with no sandbox hosts is refused too: silently meshing nothing looks identical
+# to success from the caller's side.
+nohost_home="$work_root/nohost-home"
+mkdir -p "$nohost_home/.ssh"
+printf 'PERSONAL-PRIVATE\n' > "$nohost_home/.ssh/id_ed25519_github_personal"
+printf 'MESH-PRIVATE\n' > "$nohost_home/.ssh/id_rsa"
+printf 'Host mac-mini-server\n  HostName 100.125.241.22\n' > "$nohost_home/.ssh/config"
+if HOME="$nohost_home" PATH="$bin_dir:$PATH" TERM='' sh "$driver" --mesh test-host \
+  >/dev/null 2>&1; then
+  fail 'a --mesh run with no sandbox hosts must fail rather than mesh nothing'
+fi
+
+# The remote command body, actually run. Everything above proves the driver *sent* the
+# right text; this proves the text does the right thing to a real file -- and that a
+# second run replaces the block rather than stacking another copy.
+remote_home="$work_root/remote-home"
+mkdir -p "$remote_home/.ssh"
+printf 'Host preexisting\n  HostName keep.example.com\n' > "$remote_home/.ssh/config"
+chmod 600 "$remote_home/.ssh/config"
+
+for run in 1 2; do
+  REMOTE_HOME="$remote_home" HOME="$mesh_home" PATH="$bin_dir:$PATH" TERM='' \
+    sh "$driver" --personal --mesh test-host >/dev/null 2>&1 ||
+    fail "executed mesh run $run must succeed"
+done
+
+remote_config="$remote_home/.ssh/config"
+begins=$(grep -c 'BEGIN dotfiles sandbox mesh' "$remote_config")
+ends=$(grep -c 'END dotfiles sandbox mesh' "$remote_config")
+[ "$begins" -eq 1 ] || fail "two runs must leave one BEGIN marker, got $begins"
+[ "$ends" -eq 1 ] || fail "two runs must leave one END marker, got $ends"
+
+hosts=$(grep -c '^Host sandbox' "$remote_config")
+[ "$hosts" -eq 2 ] || fail "two runs must leave two sandbox hosts, got $hosts"
+
+# The block is additive: what was in the config before it must still be there.
+grep -q 'Host preexisting' "$remote_config" ||
+  fail 'the mesh block must not discard pre-existing config'
+grep -q 'keep.example.com' "$remote_config" ||
+  fail 'the mesh block must not discard pre-existing host settings'
+
+mode=$(ls -l "$remote_config" | cut -c1-10)
+case $mode in
+  -rw-------) ;;
+  *) fail "remote ssh config must end 0600, got $mode" ;;
+esac
 
 if [ "$failures" -ne 0 ]; then
   printf '%s account-selection check(s) failed\n' "$failures" >&2
