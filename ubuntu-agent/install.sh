@@ -586,6 +586,13 @@ ensure_npm_registry() {
 }
 
 install_copilot_cli() {
+  # The registry is configured before the early return on purpose. It is a property of the
+  # machine, not of this one install: with copilot already present the old ordering
+  # returned first and left npm pointed at a registry that does not answer here, so every
+  # later `npm install`/`npm update` on that box failed. Verified live -- the run logged
+  # the mirror while `npm config get registry` still read registry.npmjs.org.
+  ensure_npm_registry
+
   if have copilot; then
     return 0
   fi
@@ -601,7 +608,6 @@ install_copilot_cli() {
     fi
   fi
 
-  ensure_npm_registry
 
   info "installing GitHub Copilot CLI with npm user prefix"
   mkdir -p "$HOME/.npm-global"

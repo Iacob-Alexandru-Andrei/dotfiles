@@ -353,6 +353,24 @@ run_at=$(printf '%s\n' "$omp_body" | grep -n 'bin/install.sh )' | head -1 | cut 
 [ "$link_at" -lt "$run_at" ] ||
   fail "the omp launcher must be linked before the harness install, so a failing install still leaves a usable omp"
 
+# The npm registry must be configured BEFORE the `have copilot` early return. With
+# copilot already installed the old ordering returned first, leaving npm pointed at a
+# registry that does not answer on this network -- the run logged the mirror while the
+# box still read registry.npmjs.org.
+copilot_body=$(sed -n '/^install_copilot_cli()/,/^}/p' "$repo_dir/ubuntu-agent/install.sh")
+reg_at=$(printf '%s\n' "$copilot_body" | grep -n 'ensure_npm_registry' | head -1 | cut -d: -f1)
+guard_at=$(printf '%s\n' "$copilot_body" | grep -n 'have copilot' | head -1 | cut -d: -f1)
+[ -n "$reg_at" ] || fail 'install_copilot_cli must configure the npm registry'
+[ -n "$guard_at" ] || fail 'install_copilot_cli must keep its have-copilot guard'
+[ "$reg_at" -lt "$guard_at" ] ||
+  fail "the npm registry must be set before the have-copilot early return"
+
+grep -q 'packagefeedproxy.microsoft.io' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail 'the internal npm mirror must be configured'
+
+grep -q 'curl -fsS -o /dev/null --max-time 10 "$npm_mirror"' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail 'the mirror must be probed before use, so clones outside this network still work'
+
 grep -q -- '--skip-apt' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must offer --skip-apt for base-image-safe runs"
 
