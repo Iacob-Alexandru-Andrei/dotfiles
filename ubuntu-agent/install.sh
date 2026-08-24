@@ -685,23 +685,44 @@ clone_or_update_repo() {
   git -C "$target_dir" pull --ff-only
 }
 
-# npm on a corporate network cannot reach registry.npmjs.org: from this machine it answers
-# nothing at all while the internal mirror answers 200. The mirror is machine-local
+# npm on a corporate network cannot reach registry.npmjs.org: from this machine it
+# answers nothing at all while the internal mirror answers. The mirror is machine-local
 # configuration rather than a fact about the package, so it is only set when it actually
 # responds -- a hardcoded internal URL would break every clone outside the network.
+#
+# TWO-WAY, and that is the part this used to get wrong. It returned early whenever npm
+# already named the mirror, so a machine that later moved off the corporate network kept
+# pointing at a proxy it could no longer see, and every `npm install` there failed with
+# no explanation. The public registry is checked FIRST and wins whenever it answers,
+# which makes leaving the network self-correcting rather than a support call.
+#
+# A HEAD that returns any status counts as an answer: the mirror replies `405 Method Not
+# Allowed` to its own root, which means reachable-and-not-serving-that-verb. `-f` would
+# read that as a failure, so it is deliberately absent here.
 ensure_npm_registry() {
   have npm || return 0
+  have curl || return 0
 
   npm_current=$(npm config get registry 2>/dev/null)
   case $npm_current in
-    *packagefeedproxy.microsoft.io*) return 0 ;;
+    *registry.npmjs.org* | '' | undefined | null | *packagefeedproxy.microsoft.io*) ;;
+    # Some third feed, deliberately configured. Not ours to override.
+    *) return 0 ;;
   esac
 
-  have curl || return 0
-  curl -fsS -o /dev/null --max-time 10 "$npm_mirror" 2>/dev/null || return 0
-
-  info "pointing npm at the internal mirror (registry.npmjs.org is unreachable here)"
-  npm config set registry "$npm_mirror" >/dev/null
+  for npm_candidate in 'https://registry.npmjs.org/' "$npm_mirror"; do
+    if curl -sS -o /dev/null -I --max-time 5 "$npm_candidate" 2>/dev/null; then
+      case $npm_current in
+        "$npm_candidate") return 0 ;;
+      esac
+      info "pointing npm at $npm_candidate (it answered; the other did not)"
+      npm config set registry "$npm_candidate" >/dev/null
+      return 0
+    fi
+  done
+  # Neither answered. Leave whatever is configured, so the eventual failure names the
+  # real network rather than a URL this function chose.
+  return 0
 }
 
 install_copilot_cli() {

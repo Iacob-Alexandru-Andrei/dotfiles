@@ -389,8 +389,11 @@ guard_at=$(printf '%s\n' "$copilot_body" | grep -n 'have copilot' | head -1 | cu
 grep -q 'packagefeedproxy.microsoft.io' "$repo_dir/ubuntu-agent/install.sh" ||
   fail 'the internal npm mirror must be configured'
 
-grep -q 'curl -fsS -o /dev/null --max-time 10 "$npm_mirror"' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail 'the mirror must be probed before use, so clones outside this network still work'
+# The PROPERTY, not the spelling: every candidate registry is probed before it is
+# configured, so a clone outside this network still works. The old assertion pinned one
+# curl invocation and failed the moment the probe learned to try both directions.
+grep -q 'curl -sS -o /dev/null -I --max-time 5 "$npm_candidate"' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail 'each registry must be probed before it is configured'
 
 # --- lint defaults ------------------------------------------------------------------
 #
@@ -452,6 +455,19 @@ grep -q 'skip-checking-short-docstrings = false' "$repo_dir/lint/pydoclint/pypro
 # agent reads past and no LSP diagnostic can fail a call whatever it says.
 grep -q 'all = "error"' "$repo_dir/lint/ty/ty.toml" ||
   fail 'the shipped ty.toml must default every rule to error'
+
+# The npm registry is chosen by REACHABILITY and both directions must work. The old
+# version returned early whenever npm already named the mirror, so a machine that moved
+# off the corporate network kept pointing at a proxy it could no longer see and every
+# npm install there failed with no explanation.
+grep -q "for npm_candidate in 'https://registry.npmjs.org/'" "$repo_dir/ubuntu-agent/install.sh" ||
+  fail 'ensure_npm_registry must try the public registry before the mirror'
+grep -q 'curl -sS -o /dev/null -I' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail 'the probe must accept any HTTP status; the mirror answers 405 to HEAD /'
+# Scoped to the registry probe: `-f` is correct for the downloads elsewhere in this
+# file, and wrong here, where a 405 means reachable.
+sed -n '/^ensure_npm_registry()/,/^}/p' "$repo_dir/ubuntu-agent/install.sh" | grep -q 'curl -f' &&
+  fail '-f reads the mirror 405 as a failure and would report it unreachable'
 
 rm -rf "$lint_home"
 
