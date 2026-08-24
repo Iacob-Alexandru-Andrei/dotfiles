@@ -1,0 +1,40 @@
+# Global ty defaults. This file is the reason ty is installed at all.
+#
+# Pyright has no user-level config: `pyright --help` offers only `-p FILE`,
+# `pyright-langserver` takes no config flag, and both an lsp.json `settings` block and
+# `initializationOptions` are ignored because pyright reads `workspace/configuration`,
+# which OMP does not answer. The one spelling that DID apply -- a
+# `pyrightconfig.json` at $HOME -- is an override, not a fallback: pyright prefers a
+# standalone file over `[tool.pyright]` wherever it finds one walking up, so it
+# replaced the include/exclude of every repository under home. Measured in repos/omp,
+# whose hook runs pyright with `pass_filenames: false`: 1s to not finishing in 300s.
+#
+# ty is the opposite, and the proof below was re-run against THIS file's settings
+# rather than a scratch config, because a comment describing an experiment the shipped
+# file does not perform is worse than no comment:
+#   - this file alone, on an unresolvable import -> `warning`, exit 0
+#   - a project adding `[tool.ty.rules] unresolved-import = "error"` -> `error`, exit 1
+# The project's answer replaces this one. That is the property that makes a global
+# default safe to have, and the property `pyrightconfig.json` at $HOME does not have.
+#
+# Modelled on the rqgm/global ruff posture: strict by default, and every relaxation
+# below is argued rather than inherited. Rules ty enables by default are left alone --
+# this file only names what a machine-wide default should say that ty's own does not.
+
+[rules]
+# Unresolved imports are the single noisiest finding outside a configured project:
+# a checkout whose venv is not yet built, a script read from /tmp, a notebook export.
+# In a project with real dependency metadata ty resolves them and this never fires;
+# as a global default it would fire constantly on files that are simply not installed.
+# A project that wants it as an error says so in its own config, and wins.
+unresolved-import = "warn"
+
+# Same reason, one level down: an attribute on a module ty could not resolve is a
+# consequence of the import above, not a separate defect worth its own error.
+unresolved-attribute = "warn"
+
+[terminal]
+# Warnings should not decide an exit code machine-wide. The two rules relaxed above
+# are warnings precisely so they inform without failing; leaving this at its default
+# would put them back in the failure path through the back door.
+error-on-warning = false

@@ -421,6 +421,13 @@ grep -q 'TRY003' "$lint_home/.config/ruff/ruff.toml" ||
 [ -f "$repo_dir/lint/pyright/pyrightconfig.json" ] ||
   fail 'the pyright defaults must still ship for a project to copy'
 
+# ty gets the global config pyright cannot have: $XDG_CONFIG_HOME/ty/ty.toml applies only
+# where the project walk finds nothing, so it cannot outrank a repository's own config.
+[ -f "$lint_home/.config/ty/ty.toml" ] ||
+  fail 'install_lint_defaults must place a global ty.toml'
+grep -q 'error-on-warning' "$repo_dir/lint/ty/ty.toml" ||
+  fail 'the shipped ty.toml must keep warnings out of the exit code'
+
 rm -rf "$lint_home"
 
 grep -q 'install_lint_defaults' "$repo_dir/ubuntu-agent/install.sh" ||

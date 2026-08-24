@@ -408,6 +408,29 @@ install_lint_defaults() {
   # `initializationOptions` at initialize is ignored, and the CLI has no user-level
   # config path. `lint/pyright/pyrightconfig.json` is kept as the reference a project
   # can adopt deliberately, NOT as a global fallback.
+
+  # ty (Astral) IS installed with a global config, because it has the exact property
+  # pyright lacks: `$XDG_CONFIG_HOME/ty/ty.toml` applies only where the project walk
+  # finds nothing. Measured against the file this actually ships, not a scratch one:
+  # on an unresolvable import it alone reports `warning` and exits 0, and a project
+  # adding `[tool.ty.rules] unresolved-import = "error"` reports `error` and exits 1.
+  # The project's answer replaces this one -- a fallback, not an override, which is the
+  # whole distinction the pyright paragraph above turns on.
+  #
+  # The binary itself is pinned in the omp harness manifest and lives at
+  # `$PI_CODING_AGENT_DIR/tools/env/bin/ty`, never on PATH: a harness that installs tools
+  # globally shadows whatever the user already had and outlives its own uninstall. So it
+  # is invoked by that absolute path, or through a profile that puts `tools/env/bin` on
+  # PATH for the session -- `ty check` as a bare word will not find it, by design.
+  #
+  # Not registered as an LSP. omp's lsp.json carries a ONE SERVER PER JOB rule and
+  # pyright already holds the type-intelligence job for Python; running both would put
+  # two indexers and two sets of type diagnostics on the same file. Swapping the two is
+  # an lsp.json edit made deliberately, not a default this installer picks.
+  ty_cfg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/ty"
+  mkdir -p "$ty_cfg_dir"
+  cp "$repo_dir/lint/ty/ty.toml" "$ty_cfg_dir/ty.toml"
+  info "ty defaults installed at $ty_cfg_dir/ty.toml"
 }
 
 # The omp harness. This is the layer that actually brings language servers to the box:
