@@ -408,6 +408,14 @@ install_omp() {
     return 0
   }
 
+  # omp's installer provisions the harness under ~/.omp/agent but leaves the launcher in
+  # the checkout, so `omp` is not a command until it is linked. Found by the healthcheck
+  # on the live host: every language server present, `omp` itself missing.
+  if [ -x "$omp_dir/bin/omp" ]; then
+    mkdir -p "$HOME/.local/bin"
+    ln -sf "$omp_dir/bin/omp" "$HOME/.local/bin/omp"
+  fi
+
   hash -r 2>/dev/null || true
 }
 
