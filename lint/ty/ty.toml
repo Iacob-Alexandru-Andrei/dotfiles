@@ -22,6 +22,17 @@
 # this file only names what a machine-wide default should say that ty's own does not.
 
 [rules]
+# EVERY RULE AT ERROR, then two demotions argued below. The ruling: a warning that
+# renders as advisory grey is one an agent reads past, and a language server cannot
+# fail a call whatever it reports -- diagnostics are advisory by protocol. So severity
+# is the only lever on whether a finding is acted on, and the default is the loud one.
+#
+# This is the half of the two-checker ruling that CAN be enforced. Pyright reads
+# severity only from `workspace/configuration`, which OMP does not answer -- measured:
+# the server asks once, nothing replies, and it then publishes nothing at all. ty reads
+# this file off disk at initialize, so it is the checker whose severities are real.
+all = "error"
+
 # Unresolved imports are the single noisiest finding outside a configured project:
 # a checkout whose venv is not yet built, a script read from /tmp, a notebook export.
 # In a project with real dependency metadata ty resolves them and this never fires;

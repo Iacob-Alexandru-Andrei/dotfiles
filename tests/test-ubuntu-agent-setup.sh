@@ -440,6 +440,19 @@ grep -q '"disabled": true' "$lint_home/.config/ty/lsp-ty.json" ||
 grep -q 'REPLACE_WITH_ABSOLUTE_TY_PATH' "$repo_dir/lint/ty/lsp-ty.json" ||
   fail 'the TRACKED template must keep the placeholder, not a machine-specific path'
 
+# pydoclint's global fallback, and the one setting that makes it worth having: with
+# skip-checking-short-docstrings at its default, a one-line docstring exempts the whole
+# function, so `def f(a, b)` documented as """Do a thing.""" passes a documentation gate.
+[ -f "$lint_home/.config/pydoclint/pyproject.toml" ] ||
+  fail 'install_lint_defaults must place the pydoclint defaults'
+grep -q 'skip-checking-short-docstrings = false' "$repo_dir/lint/pydoclint/pyproject.toml" ||
+  fail 'the shipped pydoclint config must close the short-docstring hole'
+
+# ty reports at error severity, because a warning rendered as advisory grey is one an
+# agent reads past and no LSP diagnostic can fail a call whatever it says.
+grep -q 'all = "error"' "$repo_dir/lint/ty/ty.toml" ||
+  fail 'the shipped ty.toml must default every rule to error'
+
 rm -rf "$lint_home"
 
 grep -q 'install_lint_defaults' "$repo_dir/ubuntu-agent/install.sh" ||

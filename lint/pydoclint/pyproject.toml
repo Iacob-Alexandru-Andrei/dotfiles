@@ -1,0 +1,39 @@
+# Global pydoclint defaults, and the reason this file exists at all is one blind spot.
+#
+# `--skip-checking-short-docstrings` DEFAULTS TO TRUE, in pydoclint and in rqgm's own
+# flag set, and it is not a small exemption: a one-line docstring exempts the whole
+# function. Measured on `def f(a: int, b: int) -> int:` with `"""Do a thing."""` and
+# nothing else -- default flags report 0 findings, this file reports 4 (DOC101 missing
+# arguments, DOC103 which ones, DOC201 no return section, DOC203 return type absent).
+# That is the shape of an undocumented function passing a documentation gate.
+#
+# Ruff cannot close it. `D417` is the nearest rule and it needs an Args section to
+# already exist: measured 0 on a docstring with no Args at all, 1 on one that lists
+# some arguments and omits others. Ruff's `DOC` linter is real and enabled globally,
+# but it implements DOC201/202/402/403/501/502 and DOC102 -- return, yield and
+# exception sections -- with no DOC101/DOC103 equivalent. So the two tools are kept
+# side by side because they cover different halves, not out of caution:
+#
+#   ruff D + DOC + ANN : docstring exists, sections are formatted, returns/yields/
+#                        raises are documented, signature carries type hints
+#   pydoclint DOC1xx   : the Args section MATCHES the signature, including when the
+#                        Args section is missing entirely
+#
+# Google style, matching rqgm's `docstring_denominator.py` and the ruff convention
+# already set in `~/.config/ruff/ruff.toml`. Two tools disagreeing about which style a
+# docstring is written in would put both of their findings on every file.
+[tool.pydoclint]
+style = "google"
+
+# THE FIX. Everything above is why this line is here.
+skip-checking-short-docstrings = false
+
+# rqgm's remaining flags, carried verbatim so a repository that adopts its bar and a
+# machine running these defaults judge the same file the same way.
+check-class-attributes = true
+arg-type-hints-in-docstring = true
+allow-init-docstring = true
+
+# Left at its default (`true`): a function with no docstring at all is already ruff's
+# `D103`, and reporting it twice in two wordings trains a reader to skim both.
+skip-checking-raises = false

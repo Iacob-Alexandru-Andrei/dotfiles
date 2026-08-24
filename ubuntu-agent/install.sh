@@ -451,6 +451,19 @@ install_lint_defaults() {
   # and `sed` would take `&` in it as "the whole match" and `#` as the delimiter. A home
   # directory containing either is unusual, not impossible, and the failure would be a
   # silently malformed config -- which presents as "the server just never starts".
+  # pydoclint's global fallback. It has no user-level config discovery of its own --
+  # `--config` FORCES a file and a bare run discovers the project's. Measured both ways
+  # against a project saying `skip-checking-short-docstrings = true`: forced global
+  # reports 4 findings, discovered project reports 0. So the omp-side server passes
+  # `--config` only where nothing above the file configures pydoclint, and this is the
+  # file it passes. The setting that matters is `skip-checking-short-docstrings = false`:
+  # left at its default a one-line docstring exempts the whole function, which is how an
+  # undocumented `def f(a, b)` passes a documentation gate.
+  pydoclint_cfg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/pydoclint"
+  mkdir -p "$pydoclint_cfg_dir"
+  cp "$repo_dir/lint/pydoclint/pyproject.toml" "$pydoclint_cfg_dir/pyproject.toml"
+  info "pydoclint defaults installed at $pydoclint_cfg_dir/pyproject.toml"
+
   ty_lsp_src="$repo_dir/lint/ty/lsp-ty.json"
   ty_bin="${PI_CODING_AGENT_DIR:-$HOME/.omp/agent}/tools/env/bin/ty"
   if [ -f "$ty_lsp_src" ] && have python3; then
