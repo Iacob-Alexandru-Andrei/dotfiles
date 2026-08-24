@@ -1,0 +1,74 @@
+# Global ruff defaults. Discovered when a project supplies no `[tool.ruff]` of its
+# own; a project-level `pyproject.toml` or `ruff.toml` replaces this file entirely
+# rather than merging with it, which is the intended override path.
+#
+# Ruff's built-in default is E4, E7, E9, F -- four families. That is a floor chosen
+# so ruff is quiet on arbitrary code, not a standard. This file raises it to the one
+# used in rqgm: everything on, with a short list of rules switched off for a stated
+# reason.
+#
+# Deliberately absent from this file: `src`, `extend-exclude`, `target-version`,
+# per-file-ignores for vendored trees, and the copyright rules. Those are claims
+# about one repository's layout and cannot be true globally.
+
+line-length = 100
+
+[lint]
+select = ["ALL"]
+# ALL, because a rule nobody chose is a rule nobody has to defend. The cost is
+# real and worth naming: a ruff upgrade can add rules to ALL and start failing
+# unchanged code. That is the trade -- new rules arrive on by default instead of
+# being missed forever.
+#
+# `ignore` holds two kinds of entry and nothing else. First, rules whose
+# requirements are each other's opposite, where selecting both makes compliance
+# impossible. Second, rules whose premise does not hold, with the reason written
+# down. Everything outside those two kinds is work, and work is done rather than
+# switched off.
+ignore = [
+    "D203",  # blank line BEFORE a class docstring -- the exact opposite of D211
+    "D213",  # summary on the SECOND line -- the exact opposite of D212
+    "COM812",  # trailing comma; the formatter owns this and they fight
+    "ISC001",  # implicit string concat; likewise formatter-owned
+    # These three require an exception's message to leave the `raise` site --
+    # hoisted into a bespoke exception class, or into a local assigned one line
+    # above. A diagnostic raised once, where it is detected, reads better at the
+    # site than three lines away.
+    "TRY003",  # long message passed to a vanilla exception at the raise site
+    "EM101",   # raw string literal passed to an exception
+    "EM102",   # f-string passed to an exception
+    # CPY001 was added to ALL in ruff 0.16 and asks every file for a copyright
+    # header. A global default cannot know an author or a licence, so this is off
+    # here; a repository that wants it turns it on with its own notice-rgx.
+    "CPY001",
+]
+
+[lint.pycodestyle]
+# E501 is the only rule here that can fire on a string, and `ruff format` cannot
+# split a string literal -- so a long one is a finding the formatter is unable to
+# fix, and an author fragments it by hand into adjacent implicit-concatenation
+# pieces to get under the limit. That fragmentation is what later edits cannot
+# find: a `str.replace` against the rendered text matches nothing.
+#
+# line-length above stays 100 because that is the FORMATTER's target and it is
+# what shapes code. This buys strings their slack and leaves code where it was.
+max-line-length = 140
+
+[lint.pydocstyle]
+convention = "google"
+
+[lint.flake8-pytest-style]
+fixture-parentheses = false
+mark-parentheses = false
+
+[lint.per-file-ignores]
+# Tests assert, use magic numbers, reach into privates, and sit outside packages.
+# Each of those is the rule's premise failing rather than a defect: S101 is about
+# `python -O` stripping asserts, raised against a suite whose entire mechanism is
+# `assert`.
+"**/tests/**" = ["S101", "PLR2004", "SLF001", "INP001", "ANN", "D"]
+"**/test_*.py" = ["S101", "PLR2004", "SLF001", "INP001", "ANN", "D"]
+"**/conftest.py" = ["INP001", "D"]
+
+[format]
+docstring-code-format = true

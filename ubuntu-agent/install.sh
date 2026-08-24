@@ -371,6 +371,42 @@ ensure_fd_shim() {
   hash -r 2>/dev/null || true
 }
 
+# Global lint/type defaults, so a directory with no config of its own is still checked
+# properly rather than at each tool's quiet built-in floor. Ruff's own default is four
+# rule families (E4, E7, E9, F); this raises it to `select = ["ALL"]` with a short,
+# argued ignore list, which is the shape rqgm uses.
+#
+# A project ALWAYS wins. Ruff resolves the nearest `ruff.toml`/`pyproject.toml` by
+# walking up from the file and only falls back to the user config when that walk finds
+# nothing -- verified both ways: in an isolated temp dir ruff reports
+# `Settings path: ~/.config/ruff/ruff.toml`, and with a local `ruff.toml` present it
+# reports that one instead.
+install_lint_defaults() {
+  ruff_cfg_dir="${XDG_CONFIG_HOME:-$HOME/.config}/ruff"
+  mkdir -p "$ruff_cfg_dir"
+  cp "$repo_dir/lint/ruff/ruff.toml" "$ruff_cfg_dir/ruff.toml"
+  info "ruff defaults installed at $ruff_cfg_dir/ruff.toml"
+
+  # Pyright takes the NEAREST `pyrightconfig.json` found by walking up from the file
+  # being checked, so a copy at $HOME governs every project that does not carry its own.
+  # Verified: a config in a parent directory silenced a diagnostic in a child.
+  #
+  # It is a file rather than an LSP `settings` block because OMP does not answer the
+  # server's `workspace/configuration` request, which makes any settings block inert --
+  # measured against yaml-language-server, where answering that request turns 0
+  # diagnostics into 2. A file works today; the settings path does not.
+  #
+  # Never overwrite one that is already there: at $HOME it is as likely to be the user's
+  # as ours, and a type-checker config is not something to clobber silently.
+  if [ -f "$HOME/pyrightconfig.json" ]; then
+    info "pyrightconfig.json already present at \$HOME; leaving it alone"
+    return 0
+  fi
+
+  cp "$repo_dir/lint/pyright/pyrightconfig.json" "$HOME/pyrightconfig.json"
+  info "pyright defaults installed at \$HOME/pyrightconfig.json"
+}
+
 # The omp harness. This is the layer that actually brings language servers to the box:
 # the sandbox had NONE before this ran -- no pyright, ruff, marksman, yaml, bash, docker
 # or json server -- because nothing here installed any and nothing checked. omp's own
@@ -926,6 +962,7 @@ ensure_fd_shim
 install_fresh
 install_helix
 install_omp
+install_lint_defaults
 wire_fresh_lsp
 install_github_cli
 install_copilot_cli

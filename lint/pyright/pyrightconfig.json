@@ -1,0 +1,36 @@
+{
+  "//": "Global pyright fallback. Pyright walks UP from the file being checked and uses the nearest pyrightconfig.json, so a copy at $HOME governs any project that does not carry its own -- verified: a config in a parent directory silenced a diagnostic in a child. A project's own pyrightconfig.json or [tool.pyright] wins, which is the intended override path.",
+
+  "//why-not-lsp": "These belong in a file rather than in lsp.json's `settings`, because OMP does not answer the server's `workspace/configuration` request -- a settings block there is inert today. Filed separately; this mechanism works now.",
+
+  "//mode": "standard is pyright's own default and is kept deliberately. strict would fail on every unannotated third-party call in projects that never opted in, and a gate that fires everywhere is one people learn to ignore.",
+  "typeCheckingMode": "standard",
+
+  "//imports": "A config at $HOME cannot know where any given project's virtualenv lives, so unresolved imports would be noise on every file. Same ruling rqgm makes, for the same reason: the type checker reports type errors, and the import resolver is not one.",
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none",
+
+  "//escalation": "Rules that catch a bug reaching runtime rather than a style preference.",
+  "reportUnboundVariable": "error",
+  "reportUnusedCoroutine": "error",
+  "reportUnusedExcept": "error",
+  "reportAssertAlwaysTrue": "error",
+  "reportSelfClsParameterName": "error",
+  "reportInvalidStringEscapeSequence": "error",
+  "reportPossiblyUnboundVariable": "warning",
+  "reportTypedDictNotRequiredAccess": "warning",
+  "reportOverlappingOverload": "warning",
+
+  "//advisory": "Real signal, kept at warning because a global default that errors on these would fail existing code never written against them.",
+  "reportArgumentType": "warning",
+  "reportReturnType": "warning",
+  "reportAttributeAccessIssue": "warning",
+  "reportOptionalMemberAccess": "warning",
+  "reportOptionalSubscript": "warning",
+  "reportIndexIssue": "warning",
+
+  "//off": "Ruff already owns these and says it better. Two tools reporting one defect trains people to read neither.",
+  "reportUnusedImport": "none",
+  "reportUnusedVariable": "none",
+  "reportPrivateUsage": "none"
+}
