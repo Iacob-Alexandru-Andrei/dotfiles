@@ -156,12 +156,16 @@ fi
 
 # Editor for anything that shells out to one: git commit messages, and omp's
 # Ctrl+G, which opens the current draft in $VISUAL and waits for it to exit.
-# Helix is the choice because that use is a thirty-second edit in a terminal
-# that is already busy: it starts instantly, ships LSP and syntax highlighting
-# with no config file to carry, and returns the terminal when it exits. A GUI
-# editor works here but steals focus to another window, which is the wrong
-# shape for editing a prompt.
-if command -v hx >/dev/null 2>&1; then
+# Fresh is the default here and on every host this repo sets up: it starts
+# instantly, speaks LSP against the same servers omp provisions, needs no config
+# file to carry, and returns the terminal when it exits. A GUI editor works but
+# steals focus to another window, which is the wrong shape for editing a prompt.
+#
+# Helix stays installed and is deliberately not named here; `hx` when you want it.
+if command -v fresh >/dev/null 2>&1; then
+  export EDITOR=fresh
+  export VISUAL=fresh
+elif command -v hx >/dev/null 2>&1; then
   export EDITOR=hx
   export VISUAL=hx
 fi

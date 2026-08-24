@@ -7,6 +7,7 @@ install_editors=1
 install_omp_harness=1
 dotfiles_args=''
 omp_repo_url='git@github-personal:Iacob-Alexandru-Andrei/omp.git'
+npm_mirror='https://packagefeedproxy.microsoft.io/npm/'
 
 usage() {
   cat <<'EOF' >&2
@@ -565,6 +566,25 @@ clone_or_update_repo() {
   git -C "$target_dir" pull --ff-only
 }
 
+# npm on a corporate network cannot reach registry.npmjs.org: from this machine it answers
+# nothing at all while the internal mirror answers 200. The mirror is machine-local
+# configuration rather than a fact about the package, so it is only set when it actually
+# responds -- a hardcoded internal URL would break every clone outside the network.
+ensure_npm_registry() {
+  have npm || return 0
+
+  npm_current=$(npm config get registry 2>/dev/null)
+  case $npm_current in
+    *packagefeedproxy.microsoft.io*) return 0 ;;
+  esac
+
+  have curl || return 0
+  curl -fsS -o /dev/null --max-time 10 "$npm_mirror" 2>/dev/null || return 0
+
+  info "pointing npm at the internal mirror (registry.npmjs.org is unreachable here)"
+  npm config set registry "$npm_mirror" >/dev/null
+}
+
 install_copilot_cli() {
   if have copilot; then
     return 0
@@ -580,6 +600,8 @@ install_copilot_cli() {
       return 0
     fi
   fi
+
+  ensure_npm_registry
 
   info "installing GitHub Copilot CLI with npm user prefix"
   mkdir -p "$HOME/.npm-global"
