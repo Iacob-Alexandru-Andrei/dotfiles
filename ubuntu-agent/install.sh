@@ -402,19 +402,20 @@ install_omp() {
     return 0
   }
 
+  # The launcher is linked BEFORE the harness install and independently of it. It is a
+  # checked-out file, not something the installer produces, and gating it on that exit
+  # code is what left the live host with every language server present and `omp` not a
+  # command -- the installer had returned nonzero after doing its work.
+  if [ -x "$omp_dir/bin/omp" ]; then
+    mkdir -p "$HOME/.local/bin"
+    ln -sf "$omp_dir/bin/omp" "$HOME/.local/bin/omp"
+  fi
+
   info "installing omp harness and its language servers"
   ( cd "$omp_dir" && ./bin/install.sh ) || {
     info "omp install.sh failed; language servers may be missing"
     return 0
   }
-
-  # omp's installer provisions the harness under ~/.omp/agent but leaves the launcher in
-  # the checkout, so `omp` is not a command until it is linked. Found by the healthcheck
-  # on the live host: every language server present, `omp` itself missing.
-  if [ -x "$omp_dir/bin/omp" ]; then
-    mkdir -p "$HOME/.local/bin"
-    ln -sf "$omp_dir/bin/omp" "$HOME/.local/bin/omp"
-  fi
 
   hash -r 2>/dev/null || true
 }

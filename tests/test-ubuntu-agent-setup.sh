@@ -342,6 +342,17 @@ grep -q 'install_omp' "$repo_dir/ubuntu-agent/install.sh" ||
 grep -q 'wire_fresh_lsp' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must wire omp's language servers into fresh"
 
+# The launcher link must come BEFORE the harness install. Gating it on that exit code
+# left the live host with all nine language servers and no `omp` command, because the
+# installer returned nonzero after doing its work.
+omp_body=$(sed -n '/^install_omp()/,/^}/p' "$repo_dir/ubuntu-agent/install.sh")
+link_at=$(printf '%s\n' "$omp_body" | grep -n 'local/bin/omp' | head -1 | cut -d: -f1)
+run_at=$(printf '%s\n' "$omp_body" | grep -n 'bin/install.sh )' | head -1 | cut -d: -f1)
+[ -n "$link_at" ] || fail 'install_omp must link the omp launcher onto PATH'
+[ -n "$run_at" ] || fail 'install_omp must run the omp installer'
+[ "$link_at" -lt "$run_at" ] ||
+  fail "the omp launcher must be linked before the harness install, so a failing install still leaves a usable omp"
+
 grep -q -- '--skip-apt' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must offer --skip-apt for base-image-safe runs"
 
