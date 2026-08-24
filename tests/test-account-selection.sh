@@ -51,8 +51,20 @@ printf 'scp %s -> %s\n' "$src" "$dst" >> "$RECORD"
 exit 0
 EOF
 
+# `ssh` records too, so the transcript shows key copies and the checkout update in the
+# order they happened. SSH_STUB_FAIL makes the remote-git step fail on demand, which is
+# what a dirty checkout looks like from here.
 cat > "$bin_dir/ssh" <<'EOF'
 #!/bin/sh
+for arg in "$@"; do
+  case $arg in
+    *.dotfiles*)
+      printf 'ssh checkout-update\n' >> "$RECORD"
+      [ -z "${SSH_STUB_FAIL:-}" ] || exit 1
+      exit 0
+      ;;
+  esac
+done
 exit 0
 EOF
 
@@ -195,6 +207,27 @@ printf 'PERSONAL-PRIVATE\n' > "$fake_home/.ssh/id_ed25519_github_personal"
 HOME="$fake_home" PATH="$bin_dir:$PATH" TERM='' sh "$driver" test-host >/dev/null 2>&1 || true
 cp "$RECORD" "$transcript"
 assert_copy "$transcript" github-personal id_ed25519_github_personal 'discovery'
+
+# Keys are copied BEFORE the checkout update. Ordering is the whole fix: a remote whose
+# ~/.dotfiles has a local edit used to abort the run before any key was installed.
+run_driver --personal --work > "$transcript"
+first_event=$(grep -nE 'scp|checkout-update' "$transcript" | head -1)
+case $first_event in
+  *scp*) ;;
+  *) fail "keys must be copied before the checkout update, got: $first_event" ;;
+esac
+
+# ... and when that update fails, the keys are already on the host. This is the sandbox_2
+# failure as a test: exit nonzero, but with both accounts installed.
+: > "$RECORD"
+if SSH_STUB_FAIL=1 HOME="$driver_home" PATH="$bin_dir:$PATH" TERM='' \
+  sh "$driver" --personal --work test-host >/dev/null 2>&1; then
+  fail 'a failing checkout update must still fail the run'
+fi
+cp "$RECORD" "$transcript"
+assert_copy "$transcript" github-personal "$PERSONAL" 'checkout failure'
+assert_copy "$transcript" github-company "$WORK" 'checkout failure'
+assert_copy "$transcript" id_ed25519 "$PERSONAL" 'checkout failure'
 
 if [ "$failures" -ne 0 ]; then
   printf '%s account-selection check(s) failed\n' "$failures" >&2

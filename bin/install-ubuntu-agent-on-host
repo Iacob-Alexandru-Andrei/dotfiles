@@ -199,16 +199,11 @@ copy_key_if_requested() {
 
 install_terminfo
 
-ssh "$host" "set -eu
-if [ ! -d \"\$HOME/.dotfiles/.git\" ]; then
-  git clone --branch '$setup_ref' '$repo_url' \"\$HOME/.dotfiles\"
-else
-  git -C \"\$HOME/.dotfiles\" remote set-url origin '$repo_url'
-  git -C \"\$HOME/.dotfiles\" fetch origin '$setup_ref'
-  git -C \"\$HOME/.dotfiles\" checkout '$setup_ref'
-  git -C \"\$HOME/.dotfiles\" pull --ff-only
-fi"
-
+# Keys go on FIRST. They are the part of this script that cannot be done by hand later,
+# and putting the checkout update ahead of them means any git trouble on the remote --
+# a local edit, a diverged branch -- takes the whole install down before a single key is
+# copied. A host with keys and a stale checkout is recoverable; the reverse is what
+# leaves you unable to clone anything.
 copy_key_if_requested "personal GitHub" "$personal_key" "github-personal"
 copy_key_if_requested "work GitHub" "$work_key" "github-company"
 
@@ -221,6 +216,32 @@ if [ "$want_personal" -eq 1 ]; then
 else
   copy_key_if_requested "work GitHub default" "$work_key" "id_ed25519"
 fi
+
+# A hand-edit on the remote is someone's work: it is neither discarded nor moved. The run
+# stops and says which files and what to do, having already installed the keys above --
+# so the account setup survives a checkout this script refuses to touch.
+ssh "$host" "set -eu
+if [ ! -d \"\$HOME/.dotfiles/.git\" ]; then
+  git clone --branch '$setup_ref' '$repo_url' \"\$HOME/.dotfiles\"
+else
+  # The dirty check comes before `remote set-url` and `fetch`, so a refusal leaves the
+  # checkout exactly as it was found -- config included.
+  dirty=\$(git -C \"\$HOME/.dotfiles\" status --porcelain)
+  if [ -n \"\$dirty\" ]; then
+    printf 'refusing to update ~/.dotfiles: local changes are present\n' >&2
+    printf '%s\n' \"\$dirty\" >&2
+    printf 'SSH keys were installed. To finish the update, on that host either\n' >&2
+    printf '  commit:  git -C ~/.dotfiles commit -a\n' >&2
+    printf '  keep:    git -C ~/.dotfiles stash push -u\n' >&2
+    printf '  discard: git -C ~/.dotfiles checkout -- .\n' >&2
+    printf 'then re-run this command.\n' >&2
+    exit 1
+  fi
+  git -C \"\$HOME/.dotfiles\" remote set-url origin '$repo_url'
+  git -C \"\$HOME/.dotfiles\" fetch origin '$setup_ref'
+  git -C \"\$HOME/.dotfiles\" checkout '$setup_ref'
+  git -C \"\$HOME/.dotfiles\" pull --ff-only
+fi"
 
 remote_args=''
 if [ "$with_dotfiles" -eq 1 ]; then
