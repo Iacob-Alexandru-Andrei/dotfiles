@@ -101,10 +101,15 @@ require_ubuntu() {
 # the caller that matters, an agent driving the box over ssh. Verified on the live host:
 # `command -v uv` empty, `bash -lc 'command -v uv'` found it.
 #
-# ~/.bashrc is read by non-interactive ssh commands when bash is the login shell (bash
-# reads it for remote-command invocations), and ~/.zshenv is read by zsh on EVERY
-# invocation, interactive or not. Writing all three is what makes the PATH true from any
-# entry point rather than only from a terminal.
+# ~/.bashrc is read by non-interactive ssh commands, and ~/.zshenv is read by zsh on
+# EVERY invocation. Writing all three is what makes the PATH true from any entry point.
+#
+# The block is PREPENDED, not appended, and that is the whole trick. Ubuntu's stock
+# ~/.bashrc opens with `case $- in *i*) ;; *) return;; esac` -- a non-interactive shell
+# returns at line 8. Appending put this block at line 131, which such a shell never
+# reaches: `ssh host 'command -v fresh'` found nothing while the binary sat in
+# ~/.local/bin and the healthcheck (running under the installer's own exported PATH)
+# reported it present. Prepending puts it ahead of that return.
 ensure_path_block() {
   begin='# BEGIN dotfiles ubuntu-agent path'
   end='# END dotfiles ubuntu-agent path'
@@ -118,16 +123,20 @@ ensure_path_block() {
 
   for profile_file in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshenv"; do
     touch "$profile_file"
-    grep -q "$begin" "$profile_file" && continue
 
-    cat >> "$profile_file" <<EOF
-
-$begin
-export PATH="\$HOME/.local/bin:\$HOME/.npm-global/bin:\$PATH"
-export EDITOR=fresh
-export VISUAL=fresh
-$end
-EOF
+    # Strip any previous copy wherever it landed, then put one at the top. This also
+    # repairs hosts that already carry an appended, unreachable block.
+    next="$profile_file.dotfiles.$$"
+    trap 'rm -f "$next"' EXIT INT TERM
+    {
+      printf '%s\n' "$begin"
+      printf 'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"\n'
+      printf 'export EDITOR=fresh\n'
+      printf 'export VISUAL=fresh\n'
+      printf '%s\n\n' "$end"
+      awk -v b="$begin" -v e="$end" '$0 == b { skip = 1; next } $0 == e { skip = 0; next } !skip { print }' "$profile_file"
+    } > "$next"
+    mv "$next" "$profile_file"
   done
 }
 

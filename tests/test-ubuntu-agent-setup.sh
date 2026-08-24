@@ -268,6 +268,27 @@ blocks=$(grep -c 'BEGIN dotfiles ubuntu-agent path' "$editor_home/.profile")
 [ "$blocks" -eq 1 ] ||
   fail "two runs must leave one PATH block in ~/.profile, got $blocks"
 
+# The block must sit at the TOP of every file. Ubuntu's stock ~/.bashrc returns at line 8
+# for non-interactive shells, so an appended block is never reached: `ssh host 'command -v
+# fresh'` found nothing while the binary was installed and the healthcheck said ok.
+printf '# stock rc\ncase $- in\n    *i*) ;;\n      *) return;;\nesac\nexisting_line=1\n' \
+  > "$editor_home/.bashrc"
+run_installer_fn ensure_path_block >/dev/null 2>&1 || true
+
+for profile in .profile .bashrc .zshenv; do
+  first=$(grep -n 'BEGIN dotfiles ubuntu-agent path' "$editor_home/$profile" | head -1 | cut -d: -f1)
+  [ "$first" = "1" ] ||
+    fail "the PATH block must be the first line of $profile, found at line $first"
+done
+
+# Prepending must not discard what was already in the file.
+grep -q 'existing_line=1' "$editor_home/.bashrc" ||
+  fail 'prepending the PATH block must preserve the existing rc contents'
+
+# And still exactly one block after the repair pass.
+blocks=$(grep -c 'BEGIN dotfiles ubuntu-agent path' "$editor_home/.bashrc")
+[ "$blocks" -eq 1 ] || fail "repairing must leave one block in .bashrc, got $blocks"
+
 rm -rf "$editor_home" "$editor_bin"
 
 # Neovim is gone, not merely unreferenced by name.
