@@ -420,8 +420,8 @@ install_lint_defaults() {
   # The binary itself is pinned in the omp harness manifest and lives at
   # `$PI_CODING_AGENT_DIR/tools/env/bin/ty`, never on PATH: a harness that installs tools
   # globally shadows whatever the user already had and outlives its own uninstall. So it
-  # is invoked by that absolute path, or through a profile that puts `tools/env/bin` on
-  # PATH for the session -- `ty check` as a bare word will not find it, by design.
+  # is invoked by that absolute path -- `ty check` as a bare word will not find it, by
+  # design, and nothing here puts `tools/env/bin` on PATH.
   #
   # Not registered as an LSP BY DEFAULT. omp's lsp.json carries a ONE SERVER PER JOB
   # rule and pyright already holds the type-intelligence job for Python; enabling both
