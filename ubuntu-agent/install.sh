@@ -387,24 +387,27 @@ install_lint_defaults() {
   cp "$repo_dir/lint/ruff/ruff.toml" "$ruff_cfg_dir/ruff.toml"
   info "ruff defaults installed at $ruff_cfg_dir/ruff.toml"
 
-  # Pyright takes the NEAREST `pyrightconfig.json` found by walking up from the file
-  # being checked, so a copy at $HOME governs every project that does not carry its own.
-  # Verified: a config in a parent directory silenced a diagnostic in a child.
+  # NO GLOBAL PYRIGHT CONFIG, and the reason is measured rather than cautious.
   #
-  # It is a file rather than an LSP `settings` block because OMP does not answer the
-  # server's `workspace/configuration` request, which makes any settings block inert --
-  # measured against yaml-language-server, where answering that request turns 0
-  # diagnostics into 2. A file works today; the settings path does not.
+  # A `pyrightconfig.json` at $HOME does govern projects that carry none -- but it
+  # also OUTRANKS `[tool.pyright]` in a project that does, because pyright prefers the
+  # standalone file wherever it finds one on the walk up. So it silently replaced the
+  # `include`/`exclude` of every repository under home, and pyright then walked trees
+  # those configs exist to keep it out of.
   #
-  # Never overwrite one that is already there: at $HOME it is as likely to be the user's
-  # as ours, and a type-checker config is not something to clobber silently.
-  if [ -f "$HOME/pyrightconfig.json" ]; then
-    info "pyrightconfig.json already present at \$HOME; leaving it alone"
-    return 0
-  fi
-
-  cp "$repo_dir/lint/pyright/pyrightconfig.json" "$HOME/pyrightconfig.json"
-  info "pyright defaults installed at \$HOME/pyrightconfig.json"
+  # Measured in repos/omp, whose pre-commit runs pyright with `pass_filenames: false`:
+  # with the file at $HOME the hook did not finish in 300s; with it removed, 1s and
+  # exit 0. That is the whole case against it.
+  #
+  # Ruff is different and keeps its global default: `~/.config/ruff/ruff.toml` is a
+  # user-level fallback ruff consults only when the walk finds no project config, so it
+  # cannot outrank one. Pyright has no equivalent -- `pyright --help` offers only
+  # `-p FILE`, and `pyright-langserver` takes no config flag at all -- so pyright is
+  # left at its own defaults until OMP answers the server's `workspace/configuration`
+  # request. Verified from three sides: a settings block in lsp.json is ignored,
+  # `initializationOptions` at initialize is ignored, and the CLI has no user-level
+  # config path. `lint/pyright/pyrightconfig.json` is kept as the reference a project
+  # can adopt deliberately, NOT as a global fallback.
 }
 
 # The omp harness. This is the layer that actually brings language servers to the box:

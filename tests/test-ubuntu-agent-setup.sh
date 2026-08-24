@@ -412,28 +412,14 @@ grep -q 'select = \["ALL"\]' "$lint_home/.config/ruff/ruff.toml" ||
 grep -q 'TRY003' "$lint_home/.config/ruff/ruff.toml" ||
   fail 'the global ruff config must carry the argued ignore list'
 
-# Pyright goes to $HOME, not ~/.config: pyright has no user-config discovery and finds
-# the nearest pyrightconfig.json by walking UP from the file being checked.
-[ -f "$lint_home/pyrightconfig.json" ] ||
-  fail 'install_lint_defaults must place pyrightconfig.json at $HOME'
-grep -q 'reportMissingImports' "$lint_home/pyrightconfig.json" ||
-  fail 'the global pyright config must silence unresolved imports'
-
-# An existing config at $HOME is the user's; it must not be clobbered.
-printf '{"typeCheckingMode":"SENTINEL_DO_NOT_CLOBBER"}\n' > "$lint_home/pyrightconfig.json"
-HOME="$lint_home" XDG_CONFIG_HOME="$lint_home/.config" sh -c '
-  set -eu
-  repo_dir=$1
-  have() { command -v "$1" >/dev/null 2>&1; }
-  info() { printf "%s\n" "$*"; }
-  eval "$(sed -n "/^install_lint_defaults()/,/^}/p" "$repo_dir/ubuntu-agent/install.sh")"
-  install_lint_defaults
-' _ "$repo_dir" >/dev/null 2>&1 || true
-grep -q 'SENTINEL_DO_NOT_CLOBBER' "$lint_home/pyrightconfig.json" ||
-  fail 'an existing $HOME/pyrightconfig.json must not be overwritten'
-# The sentinel is only meaningful if the shipped config could not have produced it.
-grep -q 'SENTINEL_DO_NOT_CLOBBER' "$repo_dir/lint/pyright/pyrightconfig.json" &&
-  fail 'the no-clobber sentinel must not appear in the shipped config'
+# Pyright must NOT get a global config. A pyrightconfig.json at $HOME outranks
+# `[tool.pyright]` in every project that has one, replacing its include/exclude --
+# measured in repos/omp, where the pyright hook went from 1s to not finishing in 300s.
+# The defaults still ship in lint/pyright/ for a project to copy into its own root.
+[ -f "$lint_home/pyrightconfig.json" ] &&
+  fail 'install_lint_defaults must not place a pyrightconfig.json at $HOME'
+[ -f "$repo_dir/lint/pyright/pyrightconfig.json" ] ||
+  fail 'the pyright defaults must still ship for a project to copy'
 
 rm -rf "$lint_home"
 
