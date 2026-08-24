@@ -80,13 +80,63 @@ grep -q 'Host github.com' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must configure github.com for ordinary Git SSH remotes"
 
 grep -q 'IdentityFile ~/.ssh/id_ed25519' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ordinary github.com SSH remotes must use the standard company key"
+  fail "ordinary github.com SSH remotes must read the default identity"
 
-grep -q 'ensure_default_company_key' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must default an existing company key to ~/.ssh/id_ed25519"
+# Behaviour, not source text. The old assertions grepped for a function name and a single
+# `ln -s` line, which a version that linked nothing at all would still have passed.
+identity_home=$(mktemp -d)
 
-grep -q 'ln -s "$HOME/.ssh/github-company" "$HOME/.ssh/id_ed25519"' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "company key defaulting must avoid duplicating private-key contents"
+extract_function() {
+  awk -v name="$1" '
+    $0 == name "() {" { inside = 1 }
+    inside { print }
+    inside && $0 == "}" { exit }
+  ' "$repo_dir/ubuntu-agent/install.sh"
+}
+
+run_default_identity() {
+  extract_function ensure_default_identity > "$identity_home/fn.sh"
+  [ -s "$identity_home/fn.sh" ] ||
+    fail "could not extract ensure_default_identity from the installer"
+  HOME="$identity_home" sh -c '. "$1"; ensure_default_identity' _ "$identity_home/fn.sh"
+}
+
+for present in github-personal github-company; do
+  rm -rf "${identity_home:?}/.ssh"
+  mkdir -p "$identity_home/.ssh"
+  printf 'KEY-%s\n' "$present" > "$identity_home/.ssh/$present"
+  printf 'PUB-%s\n' "$present" > "$identity_home/.ssh/$present.pub"
+
+  run_default_identity
+
+  [ -L "$identity_home/.ssh/id_ed25519" ] ||
+    fail "default identity must be a symlink when only $present is installed"
+  [ "$(cat "$identity_home/.ssh/id_ed25519")" = "KEY-$present" ] ||
+    fail "default identity must resolve to $present when it is the only key"
+  [ "$(cat "$identity_home/.ssh/id_ed25519.pub")" = "PUB-$present" ] ||
+    fail "default public identity must resolve to $present"
+done
+
+# Both installed: personal holds the unqualified identity, matching the driver's rule
+# that personal is always fine and work is the thing you opt into.
+rm -rf "${identity_home:?}/.ssh"
+mkdir -p "$identity_home/.ssh"
+printf 'KEY-personal\n' > "$identity_home/.ssh/github-personal"
+printf 'KEY-work\n' > "$identity_home/.ssh/github-company"
+run_default_identity
+[ "$(cat "$identity_home/.ssh/id_ed25519")" = 'KEY-personal' ] ||
+  fail "with both accounts installed, personal must hold the default identity"
+
+# An identity the operator already placed is never replaced.
+rm -rf "${identity_home:?}/.ssh"
+mkdir -p "$identity_home/.ssh"
+printf 'KEY-personal\n' > "$identity_home/.ssh/github-personal"
+printf 'PRE-EXISTING\n' > "$identity_home/.ssh/id_ed25519"
+run_default_identity
+[ "$(cat "$identity_home/.ssh/id_ed25519")" = 'PRE-EXISTING' ] ||
+  fail "an existing ~/.ssh/id_ed25519 must not be overwritten"
+
+rm -rf "$identity_home"
 
 grep -q 'ensure_github_known_host' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must idempotently add GitHub to known_hosts"

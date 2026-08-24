@@ -531,23 +531,28 @@ Host github-company
 EOF
 }
 
-ensure_default_company_key() {
+ensure_default_identity() {
   mkdir -p "$HOME/.ssh"
   chmod 700 "$HOME/.ssh"
 
-  if [ ! -f "$HOME/.ssh/github-company" ]; then
+  # Whoever the driver copied wins; this only fills a vacancy. Personal first, matching
+  # the driver: personal is always fine, so it is the safe holder of an unqualified
+  # git@github.com. Work only takes it on a host where personal was never installed.
+  for account in github-personal github-company; do
+    [ -f "$HOME/.ssh/$account" ] || continue
+
+    if [ ! -e "$HOME/.ssh/id_ed25519" ] && [ ! -L "$HOME/.ssh/id_ed25519" ]; then
+      ln -s "$HOME/.ssh/$account" "$HOME/.ssh/id_ed25519"
+    fi
+
+    if [ -f "$HOME/.ssh/$account.pub" ] &&
+      [ ! -e "$HOME/.ssh/id_ed25519.pub" ] &&
+      [ ! -L "$HOME/.ssh/id_ed25519.pub" ]; then
+      ln -s "$HOME/.ssh/$account.pub" "$HOME/.ssh/id_ed25519.pub"
+    fi
+
     return 0
-  fi
-
-  if [ ! -e "$HOME/.ssh/id_ed25519" ] && [ ! -L "$HOME/.ssh/id_ed25519" ]; then
-    ln -s "$HOME/.ssh/github-company" "$HOME/.ssh/id_ed25519"
-  fi
-
-  if [ -f "$HOME/.ssh/github-company.pub" ] &&
-    [ ! -e "$HOME/.ssh/id_ed25519.pub" ] &&
-    [ ! -L "$HOME/.ssh/id_ed25519.pub" ]; then
-    ln -s "$HOME/.ssh/github-company.pub" "$HOME/.ssh/id_ed25519.pub"
-  fi
+  done
 }
 
 ensure_github_known_host() {
@@ -655,7 +660,7 @@ install_astronvim
 install_github_cli
 install_copilot_cli
 install_github_hosts
-ensure_default_company_key
+ensure_default_identity
 ensure_github_known_host
 install_copilot_skills
 run_dotfiles_install

@@ -74,15 +74,35 @@ Agent/Copilot setup for Ubuntu hosts is separate from the normal dotfiles
 installer. From a machine that already has this repo:
 
 ```sh
-~/.dotfiles/bin/install-ubuntu-agent-on-host \
-  --personal-key ~/.ssh/<personal-key> \
-  --work-key ~/.ssh/<work-key> \
-  <ssh-host>
+~/.dotfiles/bin/install-ubuntu-agent-on-host <ssh-host>            # personal auth
+~/.dotfiles/bin/install-ubuntu-agent-on-host --work <ssh-host>     # work auth
+~/.dotfiles/bin/install-ubuntu-agent-on-host --personal --work <ssh-host>
 ```
+
+Each flag selects one account and nothing else, so typing both is what installs
+both. With neither, you get personal, which needs no opting into. The keys are
+discovered from `~/.ssh` -- `id_ed25519_github_personal` and `id_ed25519` --
+and `--personal-key PATH` / `--work-key PATH` override that discovery and select
+the account they name.
+
+Both accounts land on the remote as `~/.ssh/github-personal` and
+`~/.ssh/github-company`, matching the host aliases the installer writes, so
+`git@github-personal:...` and `git@github-company:...` both work. The
+unqualified `git@github.com:...` reads `~/.ssh/id_ed25519`, which personal
+claims whenever personal was selected; a work-only install gives it to work.
 
 See [`ubuntu-agent/README.md`](ubuntu-agent/README.md) for details. Missing apt
 packages are installed by default; pass `--skip-apt` if you only want the script
 to report them. Neovim 0.11+/AstroNvim is installed by default; pass
 `--skip-neovim` to opt out. `nvitop` and `bpytop` are installed as user-space
-monitors. The work key is installed as the standard `~/.ssh/id_ed25519` GitHub key so
-ordinary `git@github.com:...` remotes use company GitHub access.
+monitors.
+
+## Tests
+
+```sh
+sh tests/run-all.sh
+```
+
+The account-selection matrix runs the real driver with `ssh` and `scp` replaced
+by recorders, so it checks which key reached which remote name rather than
+grepping the script for the shape of an answer.

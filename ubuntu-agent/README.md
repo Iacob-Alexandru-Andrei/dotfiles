@@ -14,18 +14,22 @@ manual.
 ## From your local machine
 
 ```sh
-~/.dotfiles/bin/install-ubuntu-agent-on-host \
-  --personal-key ~/.ssh/<personal-key> \
-  --work-key ~/.ssh/<work-key> \
-  <ssh-host>
+~/.dotfiles/bin/install-ubuntu-agent-on-host <ssh-host>            # personal auth
+~/.dotfiles/bin/install-ubuntu-agent-on-host --work <ssh-host>     # work auth
+~/.dotfiles/bin/install-ubuntu-agent-on-host --personal --work <ssh-host>
 ```
 
-The key paths are examples. The script copies the selected private keys to the
-remote as `~/.ssh/github-personal` and `~/.ssh/github-company` with strict file
-permissions. The work key is also installed as `~/.ssh/id_ed25519`, so ordinary
-`git@github.com:...` remotes and submodules use the company key without a custom
-SSH host alias. It never stores keys in this repository and does not print key
-contents.
+Each flag selects one account and nothing else; typing both installs both, and
+neither means personal. Keys are discovered from `~/.ssh`
+(`id_ed25519_github_personal` and `id_ed25519`), and `--personal-key PATH` /
+`--work-key PATH` override that discovery and select the account they name.
+
+The script copies the selected private keys to the remote as
+`~/.ssh/github-personal` and `~/.ssh/github-company` with strict file
+permissions. `~/.ssh/id_ed25519` goes to personal whenever personal was
+selected, so an ordinary `git@github.com:...` remote works without a custom host
+alias; a work-only install gives that name to the work key instead. It never
+stores keys in this repository and does not print key contents.
 
 The remote installer installs Copilot skills from source repositories instead of
 copying your local `~/.copilot` directories:

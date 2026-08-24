@@ -7,18 +7,27 @@ setup_ref=$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD 2>/dev/null ||
   git -C "$repo_dir" rev-parse --short HEAD)
 personal_key=''
 work_key=''
+want_personal=-1
+want_work=0
 with_dotfiles=1
 install_apt=1
 install_neovim=1
 dotfiles_args=''
+
+# The key each account signs with here, so neither has to be typed. An explicit
+# --personal-key/--work-key still wins; this is the answer when nothing is given.
+default_personal_key="$HOME/.ssh/id_ed25519_github_personal"
+default_work_key="$HOME/.ssh/id_ed25519"
 
 usage() {
   cat <<'EOF' >&2
 usage: install-ubuntu-agent-on-host [options] <ssh-host>
 
 Options:
-  --personal-key PATH   Copy PATH to remote ~/.ssh/github-personal
-  --work-key PATH       Copy PATH to remote ~/.ssh/github-company
+  --personal            Install personal GitHub auth (the default when neither is given)
+  --work                Install work GitHub auth; pass both flags to install both
+  --personal-key PATH   Personal key to copy, overriding the discovered one
+  --work-key PATH       Work key to copy, overriding the discovered one
   --skip-dotfiles       Do not run the normal ~/.dotfiles/install.sh on remote
   --skip-apt            Do not install missing Ubuntu packages
   --install-apt         Install missing Ubuntu packages (default; kept for compatibility)
@@ -35,14 +44,24 @@ EOF
 host=''
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --personal)
+      want_personal=1
+      shift
+      ;;
+    --work)
+      want_work=1
+      shift
+      ;;
     --personal-key)
       [ "$#" -ge 2 ] || { usage; exit 2; }
       personal_key=$2
+      want_personal=1
       shift 2
       ;;
     --work-key)
       [ "$#" -ge 2 ] || { usage; exit 2; }
       work_key=$2
+      want_work=1
       shift 2
       ;;
     --skip-dotfiles)
@@ -93,6 +112,40 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$host" ] || { usage; exit 2; }
+
+# Each flag selects its own account and nothing else, so `--work` is work, `--personal`
+# is personal, and typing both is what installs both. Neither given means personal,
+# because that is the account with nothing to opt into.
+if [ "$want_personal" -eq -1 ] && [ "$want_work" -eq 0 ]; then
+  want_personal=1
+fi
+[ "$want_personal" -ne -1 ] || want_personal=0
+
+resolve_key() {
+  label=$1
+  chosen=$2
+  fallback=$3
+
+  if [ -n "$chosen" ]; then
+    printf '%s\n' "$chosen"
+    return 0
+  fi
+  if [ -f "$fallback" ]; then
+    printf '%s\n' "$fallback"
+    return 0
+  fi
+  # Naming the path that was searched beats "key not found": the fix is either to put a
+  # key there or to pass the one that exists.
+  printf 'no %s key found at %s; pass --%s-key PATH\n' "$label" "$fallback" "$label" >&2
+  exit 1
+}
+
+if [ "$want_personal" -eq 1 ]; then
+  personal_key=$(resolve_key personal "$personal_key" "$default_personal_key")
+fi
+if [ "$want_work" -eq 1 ]; then
+  work_key=$(resolve_key work "$work_key" "$default_work_key")
+fi
 
 install_terminfo() {
   term_name=${TERM:-}
@@ -158,7 +211,16 @@ fi"
 
 copy_key_if_requested "personal GitHub" "$personal_key" "github-personal"
 copy_key_if_requested "work GitHub" "$work_key" "github-company"
-copy_key_if_requested "work GitHub default" "$work_key" "id_ed25519"
+
+# `Host github.com` reads ~/.ssh/id_ed25519, so a plain git@github.com URL needs one of
+# the two to claim it. Personal takes it whenever personal was selected -- personal is
+# always fine, and it is what makes an unqualified clone work. Work only claims it on a
+# work-only install, where it is the sole key present.
+if [ "$want_personal" -eq 1 ]; then
+  copy_key_if_requested "personal GitHub default" "$personal_key" "id_ed25519"
+else
+  copy_key_if_requested "work GitHub default" "$work_key" "id_ed25519"
+fi
 
 remote_args=''
 if [ "$with_dotfiles" -eq 1 ]; then
