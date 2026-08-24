@@ -274,6 +274,20 @@ Host sandbox_2
 Host sandbox_gpu sandbox_gpu2
       HostName BOXGPU.example.com
       User someone@example.com
+
+# A wildcard, which is a pattern rather than a name. Carried to the top of the remote's
+# config it would answer for every host starting `sandbox`, including ones meant for
+# another key entirely.
+Host sandbox*
+      HostName WILD.example.com
+
+# A negation only means something next to the entry it excludes; carried alone it is noise.
+Host !sandbox-prod
+      HostName NEGATED.example.com
+
+# A name that merely starts with the same letters. `^sandbox` matched this.
+Host sandboxes.example.com
+      HostName LOOKALIKE.example.com
 CFG
 
 run_mesh() {

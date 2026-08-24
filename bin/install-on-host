@@ -14,7 +14,7 @@ usage: install-on-host [options] <ssh-host>
 Options:
   --minimal       Run remote install.sh --minimal
   --no-packages   Run remote install.sh --no-packages
-  --no-nvim       Run remote install.sh --no-nvim
+  --no-editors    Run remote install.sh --no-editors
   -h, --help      Show this help
 EOF
 }
@@ -22,7 +22,7 @@ EOF
 host=''
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --minimal|--no-packages|--no-nvim)
+    --minimal|--no-packages|--no-editors)
       install_args="$install_args $1"
       shift
       ;;

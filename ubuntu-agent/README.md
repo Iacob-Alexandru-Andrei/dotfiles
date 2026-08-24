@@ -73,8 +73,30 @@ copying your local `~/.copilot` directories:
 
 The remote installer installs missing apt packages by default using
 `sudo apt-get`. Add `--skip-apt` when you want to only report missing packages.
-It installs Neovim 0.11+ with AstroNvim by default; add `--skip-neovim` to opt
-out. It also installs `nvitop` and `bpytop` as user-space monitoring commands.
+It also installs `nvitop` and `bpytop` as user-space monitoring commands.
+
+### Editors
+
+[Fresh](https://github.com/sinelaw/fresh) is the editor this installs and the
+one it makes default: `EDITOR` and `VISUAL` both point at it, which is also what
+omp reads for its external-editor binding. On Linux it is a single static musl
+binary under `~/.local`, owned by you, needing no root and updating itself with
+`fresh --cmd update`.
+
+Helix is installed beside it and is deliberately never made the default -- `hx`
+is there when you want it. `--skip-editors` skips both.
+
+Neovim and AstroNvim are no longer installed.
+
+### Language servers
+
+The omp harness is installed from its own repository, and it is what provisions
+the language servers: pyright, ruff, marksman, yaml, bash, docker, and json.
+They are then wired into fresh automatically, generated from omp's own
+`lsp.json` so the two cannot drift -- add a server there and fresh picks it up
+on the next run. Servers omp declares but does not provision are skipped rather
+than written, because a config naming a missing binary shows up as a per-buffer
+error. `--skip-omp` skips the harness and the wiring together.
 
 ## On the remote machine
 
@@ -89,20 +111,28 @@ Omit `--with-dotfiles` to skip the normal zsh/tmux symlink setup.
 ## What it configures
 
 - Ubuntu package checks for common tools such as `git`, `curl`, `jq`, `ripgrep`,
-  `fd`, `tmux`, `zsh`, `nvim`, `python3`, `pipx`, and `npm`
+  `fd`, `tmux`, `zsh`, `python3`, `pipx`, and `npm`
+- `fd` as a name: Ubuntu ships the binary as `fdfind`, so a shim is linked into
+  `~/.local/bin`
 - user-space `uv==0.11.2`
 - user-space `pre-commit`
 - user-space `wandb`
 - user-space `nvitop`
 - user-space `bpytop`
-- Neovim 0.11+ with AstroNvim, unless an existing non-owned `~/.config/nvim` is present
+- fresh as the default editor, and helix alongside it
+- the omp harness and its seven language servers, wired into fresh
+- `PATH`, `EDITOR`, and `VISUAL` written to `~/.profile`, `~/.bashrc`, and
+  `~/.zshenv`, so a non-interactive `ssh host 'command -v uv'` finds what was
+  installed. Writing only `~/.profile` left every user-space install invisible
+  to exactly the caller that matters -- an agent driving the box over ssh.
 - interactive bash sessions hand off to zsh automatically
 - GitHub Copilot CLI via npm when `copilot` is missing and `npm` is available
 - Copilot skills from source repositories plus Superpowers and Ponytail from
   Copilot plugin marketplaces
 - SSH defaults for ordinary `github.com` remotes plus host aliases
   `github-personal` and `github-company`
-- a healthcheck for `gh`, `az`, `amlt`, `nvitop`, `bpytop`, keys, skills, and `WANDB_API_KEY`
+- a healthcheck for the tools above, every language server, keys, skills, and
+  `WANDB_API_KEY`
 
 Authentication remains manual: run `gh auth login`, `copilot login`, `az login`,
 and `amlt project checkout ...` as needed.

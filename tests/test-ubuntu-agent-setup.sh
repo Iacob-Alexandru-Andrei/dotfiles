@@ -32,8 +32,11 @@ grep -q 'setup_ref=' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
 grep -q 'setup_ref=' "$repo_dir/bin/install-on-host" ||
   fail "normal host installer must detect the current local ref that contains dotfiles files"
 
-grep -q -- '--skip-neovim' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
-  fail "host installer must pass through --skip-neovim"
+grep -q -- '--skip-editors' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
+  fail "host installer must pass through --skip-editors"
+
+grep -q -- '--skip-omp' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
+  fail "host installer must pass through --skip-omp"
 
 grep -q -- '--minimal' "$repo_dir/bin/install-on-host" ||
   fail "normal host installer must pass through --minimal"
@@ -41,8 +44,8 @@ grep -q -- '--minimal' "$repo_dir/bin/install-on-host" ||
 grep -q -- '--no-packages' "$repo_dir/bin/install-on-host" ||
   fail "normal host installer must pass through --no-packages"
 
-grep -q -- '--no-nvim' "$repo_dir/bin/install-on-host" ||
-  fail "normal host installer must pass through --no-nvim"
+grep -q -- '--no-editors' "$repo_dir/bin/install-on-host" ||
+  fail "normal host installer must pass through --no-editors"
 
 grep -q -- '--minimal' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
   fail "ubuntu-agent host installer must pass through --minimal"
@@ -50,8 +53,8 @@ grep -q -- '--minimal' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
 grep -q -- '--no-packages' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
   fail "ubuntu-agent host installer must pass through --no-packages"
 
-grep -q -- '--no-nvim' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
-  fail "ubuntu-agent host installer must pass through --no-nvim"
+grep -q 'install_omp_harness' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
+  fail "ubuntu-agent host installer must track the omp harness selection"
 
 grep -q 'git clone --branch' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
   fail "host installer must clone the selected setup ref on new remotes"
@@ -207,47 +210,70 @@ grep -q 'pipx_package_installed bpytop' "$repo_dir/ubuntu-agent/install.sh" ||
 grep -q 'python3 -m pipx install bpytop' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "bpytop should be installed with pipx when available"
 
-grep -q 'install_astronvim' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must install AstroNvim"
+# --- editors -----------------------------------------------------------------------
+#
+# Behaviour, not source text: the previous block grepped for `install_astronvim` and a
+# hardcoded tarball name, which asserted that particular lines existed rather than that
+# the installer worked. These run the real functions against a fake HOME and a stubbed
+# PATH, and read what lands on disk.
 
-grep -q 'ensure_modern_neovim' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must ensure Neovim is modern enough for AstroNvim"
+editor_home=$(mktemp -d)
+editor_bin=$(mktemp -d)
 
-grep -q 'required_nvim_minor=11' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "AstroNvim requires Neovim 0.11+"
+# `have` must find these, and they must not do anything real.
+for stub in curl git python3 sudo; do
+  printf '#!/bin/sh\nexit 0\n' > "$editor_bin/$stub"
+  chmod +x "$editor_bin/$stub"
+done
 
-grep -q 'nvim-linux-x86_64.tar.gz' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "modern Neovim installer must use the upstream Linux x86_64 release tarball"
+# ensure_path_block is the fix for the live gap: user installs were invisible to
+# non-interactive ssh because only ~/.profile carried the PATH.
+run_installer_fn() {
+  fn=$1
+  shift
+  HOME="$editor_home" PATH="$editor_bin:$PATH" sh -c '
+    set -eu
+    HOME=$1; fn=$2; script=$3
+    have() { command -v "$1" >/dev/null 2>&1; }
+    info() { printf "%s\n" "$*"; }
+    install_editors=1
+    install_omp_harness=1
+    install_apt=0
+    eval "$(sed -n "/^'"$fn"'()/,/^}/p" "$script")"
+    "$fn"
+  ' _ "$editor_home" "$fn" "$repo_dir/ubuntu-agent/install.sh" "$@"
+}
 
-grep -q 'NVIM_APPNAME' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "Neovim version checks must avoid loading user config"
+run_installer_fn ensure_path_block >/dev/null 2>&1 || true
 
-grep -q 'ln -sfn "$nvim_install_dir/bin/nvim" "$HOME/.local/bin/nvim"' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "modern Neovim installer must put nvim on the user PATH"
+for profile in .profile .bashrc .zshenv; do
+  [ -f "$editor_home/$profile" ] ||
+    fail "ensure_path_block must write $profile so non-interactive ssh sees the PATH"
+  grep -q '.local/bin' "$editor_home/$profile" ||
+    fail "$profile must put .local/bin on PATH"
+  grep -q 'EDITOR=fresh' "$editor_home/$profile" ||
+    fail "$profile must make fresh the default editor"
+  grep -q 'VISUAL=fresh' "$editor_home/$profile" ||
+    fail "$profile must set VISUAL so omp external editor uses fresh"
+done
 
-grep -q 'hash -r' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "modern Neovim installer must refresh the shell command cache after installing nvim"
+# Helix is installed but must never be made the default.
+if grep -qE 'EDITOR=(hx|helix)|VISUAL=(hx|helix)' "$repo_dir/ubuntu-agent/install.sh"; then
+  fail 'helix must not be set as the default editor'
+fi
 
-grep -q 'Neovim 0.11+ is required for AstroNvim' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "AstroNvim setup must fail clearly if Neovim remains too old"
+# Idempotent: a second run must not stack a second block.
+run_installer_fn ensure_path_block >/dev/null 2>&1 || true
+blocks=$(grep -c 'BEGIN dotfiles ubuntu-agent path' "$editor_home/.profile")
+[ "$blocks" -eq 1 ] ||
+  fail "two runs must leave one PATH block in ~/.profile, got $blocks"
 
-grep -q 'install_neovim=1' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must install Neovim/AstroNvim by default"
+rm -rf "$editor_home" "$editor_bin"
 
-grep -q -- '--skip-neovim' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must offer --skip-neovim"
-
-grep -q 'nvim:neovim' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent apt setup must install neovim when nvim is missing"
-
-grep -q 'AstroNvim/template' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "AstroNvim must be installed from the official template repository"
-
-grep -q '.dotfiles-ubuntu-agent-astronvim' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "AstroNvim install must write an ownership marker for idempotence"
-
-grep -q 'existing Neovim config' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "AstroNvim install must skip existing non-owned Neovim config"
+# Neovim is gone, not merely unreferenced by name.
+if grep -qiE 'neovim|astronvim|nvim' "$repo_dir/ubuntu-agent/install.sh"; then
+  fail 'the ubuntu-agent installer must no longer reference Neovim or AstroNvim'
+fi
 
 grep -q 'install_bash_zsh_handoff' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must configure bash-to-zsh handoff"
@@ -261,8 +287,16 @@ grep -q 'DOTFILES_ZSH_HANDOFF' "$repo_dir/ubuntu-agent/install.sh" ||
 grep -q 'exec zsh' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "bash-to-zsh handoff must exec zsh for interactive bash shells"
 
-grep -q 'git curl jq rg fdfind tmux zsh nvim python3 uv pre-commit wandb nvitop bpytop npm copilot gh az amlt' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent healthcheck must report nvim, wandb, nvitop, and bpytop"
+# The healthcheck must name what the installer now installs. It previously verified
+# `nvim` and no language server at all, which is how the live box reported green with
+# zero servers on it.
+for expected in fresh hx omp fd uv pre-commit wandb nvitop bpytop copilot; do
+  grep -qE "for cmd in .*\b${expected}\b" "$repo_dir/ubuntu-agent/install.sh" ||
+    fail "ubuntu-agent healthcheck must report $expected"
+done
+
+grep -q 'lsp.json' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail 'ubuntu-agent healthcheck must verify the language servers omp provisions'
 
 grep -q 'install_github_cli' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must install GitHub CLI"
@@ -302,8 +336,11 @@ grep -q -- '--minimal' "$repo_dir/ubuntu-agent/install.sh" ||
 grep -q -- '--no-packages' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must pass through --no-packages to normal dotfiles installer"
 
-grep -q -- '--no-nvim' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must pass through --no-nvim to normal dotfiles installer"
+grep -q 'install_omp' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must install the omp harness"
+
+grep -q 'wire_fresh_lsp' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must wire omp's language servers into fresh"
 
 grep -q -- '--skip-apt' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must offer --skip-apt for base-image-safe runs"

@@ -111,8 +111,10 @@ key.
 
 See [`ubuntu-agent/README.md`](ubuntu-agent/README.md) for details. Missing apt
 packages are installed by default; pass `--skip-apt` if you only want the script
-to report them. Neovim 0.11+/AstroNvim is installed by default; pass
-`--skip-neovim` to opt out. `nvitop` and `bpytop` are installed as user-space
+to report them. Fresh is installed as the default editor (`EDITOR`/`VISUAL`,
+which is also what omp reads) with helix alongside it; pass `--skip-editors` to
+opt out of both. The omp harness and its language servers are installed too;
+`--skip-omp` opts out. `nvitop` and `bpytop` are installed as user-space
 monitors.
 
 ## Tests

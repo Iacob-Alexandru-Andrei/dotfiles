@@ -4,13 +4,13 @@ set -eu
 # Cross-platform dotfiles installer (macOS + Debian/Ubuntu).
 # - Symlinks zsh / zim / tmux configs (always).
 # - Installs modern CLI tools the configs expect (zoxide, fzf, eza, bat, ...).
-# - Installs Neovim + AstroNvim.
+# - Installs fresh (the default editor) and helix.
 # - Installs the omp coding harness and its Copilot endpoint.
 #
 # Usage:
-#   ./install.sh                full setup (symlinks + packages + AstroNvim + omp)
+#   ./install.sh                full setup (symlinks + packages + editors + omp)
 #   ./install.sh --minimal      symlinks only (no package installs)
-#   ./install.sh --no-nvim      everything except Neovim/AstroNvim
+#   ./install.sh --no-editors   everything except fresh/helix
 #   ./install.sh --no-omp       everything except the omp harness
 #   ./install.sh --no-packages  alias of --minimal
 
@@ -18,14 +18,14 @@ repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 timestamp=$(date +%Y%m%d%H%M%S)
 
 INSTALL_PACKAGES=1
-INSTALL_NVIM=1
+INSTALL_EDITORS=1
 INSTALL_OMP=1
 for arg in "$@"; do
   case "$arg" in
-    --minimal|--no-packages) INSTALL_PACKAGES=0; INSTALL_NVIM=0; INSTALL_OMP=0 ;;
-    --no-nvim) INSTALL_NVIM=0 ;;
+    --minimal|--no-packages) INSTALL_PACKAGES=0; INSTALL_EDITORS=0; INSTALL_OMP=0 ;;
+    --no-editors) INSTALL_EDITORS=0 ;;
     --no-omp) INSTALL_OMP=0 ;;
-    -h|--help) printf 'usage: %s [--minimal] [--no-nvim] [--no-omp]\n' "$0"; exit 0 ;;
+    -h|--help) printf 'usage: %s [--minimal] [--no-editors] [--no-omp]\n' "$0"; exit 0 ;;
     *) printf 'unknown option: %s\n' "$arg" >&2; exit 2 ;;
   esac
 done
@@ -217,71 +217,71 @@ install_nerdfont_linux() {
 }
 
 # --------------------------------------------------------------------------
-# Neovim (current stable) — AstroNvim needs >= 0.10
+# Editors: fresh is the default, helix is available
 # --------------------------------------------------------------------------
-nvim_ok() {
-  have nvim || return 1
-  v=$(nvim --version 2>/dev/null | sed -n 's/^NVIM v\([0-9]*\)\.\([0-9]*\).*/\1 \2/p' | head -1)
-  [ -n "$v" ] || return 1
-  # shellcheck disable=SC2086
-  set -- $v
-  [ "$1" -gt 0 ] || [ "$2" -ge 10 ]
-}
+# Fresh replaces Neovim/AstroNvim here. On Linux it is one static musl binary under
+# ~/.local that updates itself; on macOS it is a brew formula. Helix installs beside it
+# and is never made the default.
+install_fresh() {
+  if have fresh; then info "fresh present: $(fresh --version 2>/dev/null || echo unknown)"; return 0; fi
 
-install_neovim() {
-  if nvim_ok; then info 'Neovim >= 0.10 present'; return 0; fi
   if [ "$pkg" = brew ]; then
-    info 'Installing Neovim via Homebrew'
-    brew install neovim || warn 'neovim brew install failed'
+    info 'Installing fresh via Homebrew'
+    brew install fresh-editor || warn 'fresh brew install failed'
     return 0
   fi
-  [ -n "$nv_arch" ] || { warn 'neovim: unsupported arch; install manually'; return 0; }
-  info 'Installing Neovim (release tarball)'
-  tmp=$(mktemp -d)
-  got=""
-  for asset in "nvim-linux-${nv_arch}.tar.gz" "nvim-linux64.tar.gz"; do
-    url="https://github.com/neovim/neovim/releases/latest/download/${asset}"
-    if curl -fsSL "$url" -o "$tmp/nvim.tar.gz"; then got=$asset; break; fi
-  done
-  if [ -z "$got" ]; then warn 'neovim download failed'; rm -rf "$tmp"; return 0; fi
-  dir=$(printf '%s' "$got" | sed 's/\.tar\.gz$//')
-  rm -rf "${HOME:?}/.local/$dir"
-  tar -xzf "$tmp/nvim.tar.gz" -C "$HOME/.local"
-  ln -sf "$HOME/.local/$dir/bin/nvim" "$HOME/.local/bin/nvim"
-  rm -rf "$tmp"
-  info "Neovim installed: $("$HOME/.local/bin/nvim" --version | head -1)"
+
+  have curl || { warn 'curl missing; cannot install fresh'; return 0; }
+
+  info 'Installing fresh (universal build)'
+  FRESH_NO_DESKTOP=1 curl -fsSL \
+    https://raw.githubusercontent.com/sinelaw/fresh/refs/heads/master/scripts/install.sh |
+    sh || warn 'fresh install failed'
+
+  hash -r 2>/dev/null || true
+  have fresh && info "fresh installed: $(fresh --version 2>/dev/null || echo unknown)"
 }
 
-# --------------------------------------------------------------------------
-# AstroNvim (official template) into $XDG_CONFIG_HOME/nvim
-# --------------------------------------------------------------------------
-install_astronvim() {
-  have git || { warn 'git missing; cannot install AstroNvim'; return 0; }
-  nvim_config="${XDG_CONFIG_HOME:-$HOME/.config}/nvim"
-  marker="$nvim_config/.installed-by-dotfiles"
+install_helix() {
+  if have hx; then info "helix present: $(hx --version 2>/dev/null || echo unknown)"; return 0; fi
 
-  if [ -f "$marker" ]; then info 'AstroNvim already installed by dotfiles'; return 0; fi
-  if [ -e "$nvim_config" ]; then
-    warn "existing nvim config found; backing up to ${nvim_config}.backup.${timestamp}"
-    mv "$nvim_config" "${nvim_config}.backup.${timestamp}"
-    # AstroNvim recommends a clean plugin/state/cache on a fresh install.
-    [ -e "$HOME/.local/share/nvim" ] && mv "$HOME/.local/share/nvim" "$HOME/.local/share/nvim.backup.${timestamp}" || true
-    [ -e "$HOME/.local/state/nvim" ] && mv "$HOME/.local/state/nvim" "$HOME/.local/state/nvim.backup.${timestamp}" || true
-    [ -e "$HOME/.cache/nvim" ] && mv "$HOME/.cache/nvim" "$HOME/.cache/nvim.backup.${timestamp}" || true
+  if [ "$pkg" = brew ]; then
+    info 'Installing helix via Homebrew'
+    brew install helix || warn 'helix brew install failed'
+    return 0
   fi
 
-  info 'Installing AstroNvim template'
-  if git clone --depth 1 https://github.com/AstroNvim/template "$nvim_config"; then
-    rm -rf "$nvim_config/.git"
-    : > "$marker"
-    if have nvim; then
-      info 'Syncing AstroNvim plugins (headless; first run may take a minute)'
-      nvim --headless "+Lazy! sync" +qa >/dev/null 2>&1 \
-        || warn 'headless sync skipped; plugins install on first launch'
+  case $nv_arch in
+    x86_64) helix_asset='x86_64-linux' ;;
+    arm64) helix_asset='aarch64-linux' ;;
+    *) warn 'helix: unsupported arch; install manually'; return 0 ;;
+  esac
+
+  have curl || { warn 'curl missing; cannot install helix'; return 0; }
+
+  helix_url=$(
+    curl -fsSL https://api.github.com/repos/helix-editor/helix/releases/latest 2>/dev/null |
+      sed -n "s/.*\"browser_download_url\": *\"\([^\"]*${helix_asset}\.tar\.xz\)\".*/\1/p" |
+      head -1
+  )
+  [ -n "$helix_url" ] || { warn 'helix: could not resolve a release'; return 0; }
+
+  info 'Installing helix (release tarball)'
+  tmp=$(mktemp -d)
+  if curl -fsSL "$helix_url" -o "$tmp/helix.tar.xz" && tar -xJf "$tmp/helix.tar.xz" -C "$tmp" 2>/dev/null; then
+    helix_root=$(find "$tmp" -maxdepth 1 -type d -name 'helix-*' | head -1)
+    if [ -n "$helix_root" ] && [ -x "$helix_root/hx" ]; then
+      mkdir -p "$HOME/.local/bin" "$HOME/.config/helix"
+      cp "$helix_root/hx" "$HOME/.local/bin/hx"
+      chmod 755 "$HOME/.local/bin/hx"
+      # The runtime carries grammars and themes; without it every buffer is unhighlighted.
+      [ -d "$helix_root/runtime" ] && cp -R "$helix_root/runtime" "$HOME/.config/helix/"
+      info "helix installed: $("$HOME/.local/bin/hx" --version 2>/dev/null | head -1)"
     fi
   else
-    warn 'AstroNvim clone failed'
+    warn 'helix download failed'
   fi
+  rm -rf "$tmp"
 }
 
 # --------------------------------------------------------------------------
@@ -362,9 +362,9 @@ install_omp() {
 # Run
 # --------------------------------------------------------------------------
 [ "$INSTALL_PACKAGES" -eq 1 ] && install_packages
-if [ "$INSTALL_NVIM" -eq 1 ]; then
-  install_neovim
-  install_astronvim
+if [ "$INSTALL_EDITORS" -eq 1 ]; then
+  install_fresh
+  install_helix
 fi
 # After the packages, which is where `uv` and `node` come from.
 OMP_STATUS='skipped by --no-omp'
@@ -374,7 +374,7 @@ printf '\n'
 info 'Done.'
 printf 'Open a new zsh session or run: exec zsh\n'
 printf 'For an existing tmux server, run: tmux source-file ~/.tmux.conf\n'
-[ "$INSTALL_NVIM" -eq 1 ] && printf 'Launch AstroNvim with: nvim\n'
+[ "$INSTALL_EDITORS" -eq 1 ] && printf 'Launch the editor with: fresh   (helix: hx)\n'
 # STATED EVERY TIME, installed or not. A summary that mentions omp only on success is one
 # where its absence looks like it was never meant to be there.
 case "$OMP_STATUS" in

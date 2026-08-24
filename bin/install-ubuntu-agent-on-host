@@ -11,7 +11,8 @@ want_personal=-1
 want_work=0
 with_dotfiles=1
 install_apt=1
-install_neovim=1
+install_editors=1
+install_omp_harness=1
 dotfiles_args=''
 want_mesh=0
 mesh_key=''
@@ -42,10 +43,10 @@ Options:
   --skip-dotfiles       Do not run the normal ~/.dotfiles/install.sh on remote
   --skip-apt            Do not install missing Ubuntu packages
   --install-apt         Install missing Ubuntu packages (default; kept for compatibility)
-  --skip-neovim         Do not install Neovim/AstroNvim
+  --skip-editors        Do not install fresh/helix
   --minimal             Pass --minimal to remote install.sh; also skips Ubuntu-agent Neovim
   --no-packages         Pass --no-packages to remote install.sh
-  --no-nvim             Pass --no-nvim to remote install.sh; also skips Ubuntu-agent Neovim
+  --skip-omp            Do not install the omp harness or its language servers
   -h, --help            Show this help
 
 This script never commits, prints, or stores private keys in the dotfiles repo.
@@ -97,22 +98,21 @@ while [ "$#" -gt 0 ]; do
       install_apt=0
       shift
       ;;
-    --skip-neovim)
-      install_neovim=0
+    --skip-editors)
+      install_editors=0
+      shift
+      ;;
+    --skip-omp)
+      install_omp_harness=0
       shift
       ;;
     --minimal)
       dotfiles_args="$dotfiles_args --minimal"
-      install_neovim=0
+      install_editors=0
       shift
       ;;
     --no-packages)
       dotfiles_args="$dotfiles_args --no-packages"
-      shift
-      ;;
-    --no-nvim)
-      dotfiles_args="$dotfiles_args --no-nvim"
-      install_neovim=0
       shift
       ;;
     -h|--help)
@@ -234,9 +234,14 @@ install_mesh() {
       tolower($1) == "host" {
         # `Host a b` is one block naming two aliases, so every field is considered and the
         # sandbox ones are carried over together. Reading only $2 drops the rest silently.
+        #
+        # Literal names only. `sandbox*` in your config is an ssh *pattern*, and this block
+        # is written at the top of the config on the remote, where the first match wins --
+        # so a carried wildcard would answer for hosts it was never meant to, and a
+        # negation would arrive stripped of the entry that gave it meaning.
         names = ""
         for (i = 2; i <= NF; i++) {
-          if ($i ~ /^sandbox/) { names = names " " $i }
+          if ($i ~ /^sandbox([-_][A-Za-z0-9._-]+)?$/) { names = names " " $i }
         }
         inblock = (names != "")
         if (inblock) {
@@ -351,8 +356,12 @@ else
   remote_args="$remote_args --install-apt"
 fi
 
-if [ "$install_neovim" -eq 0 ]; then
-  remote_args="$remote_args --skip-neovim"
+if [ "$install_editors" -eq 0 ]; then
+  remote_args="$remote_args --skip-editors"
+fi
+
+if [ "$install_omp_harness" -eq 0 ]; then
+  remote_args="$remote_args --skip-omp"
 fi
 
 remote_args="$remote_args $remote_dotfiles_args"

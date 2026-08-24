@@ -3,17 +3,26 @@ set -eu
 
 with_dotfiles=0
 install_apt=1
-install_neovim=1
+install_editors=1
+install_omp_harness=1
 dotfiles_args=''
+omp_repo_url='git@github-personal:Iacob-Alexandru-Andrei/omp.git'
 
 usage() {
   cat <<'EOF' >&2
-usage: ubuntu-agent/install.sh [--with-dotfiles] [--install-apt] [--skip-apt] [--skip-neovim] [--minimal] [--no-packages] [--no-nvim]
+usage: ubuntu-agent/install.sh [--with-dotfiles] [--install-apt] [--skip-apt] [--skip-editors] [--skip-omp] [--minimal] [--no-packages]
 
 Sets up an Ubuntu host for agent/Copilot work without changing the default
 dotfiles installer. Existing tools and config are detected and left in place.
 Missing apt packages are installed by default. Use --skip-apt to only report
-missing packages. Use --skip-neovim to skip Neovim/AstroNvim setup.
+missing packages.
+
+Editors: fresh is installed and made the default (EDITOR/VISUAL); helix is
+installed alongside it and is never made the default. --skip-editors skips both.
+
+The omp harness is installed from its own repository, which is what provisions
+the language servers; --skip-omp skips it, and skipping it also skips wiring
+those servers into fresh.
 EOF
 }
 
@@ -31,22 +40,21 @@ while [ "$#" -gt 0 ]; do
       install_apt=0
       shift
       ;;
-    --skip-neovim)
-      install_neovim=0
+    --skip-editors)
+      install_editors=0
+      shift
+      ;;
+    --skip-omp)
+      install_omp_harness=0
       shift
       ;;
     --minimal)
       dotfiles_args="$dotfiles_args --minimal"
-      install_neovim=0
+      install_editors=0
       shift
       ;;
     --no-packages)
       dotfiles_args="$dotfiles_args --no-packages"
-      shift
-      ;;
-    --no-nvim)
-      dotfiles_args="$dotfiles_args --no-nvim"
-      install_neovim=0
       shift
       ;;
     -h|--help)
@@ -85,24 +93,41 @@ require_ubuntu() {
   fi
 }
 
+# PATH and the editor defaults, written where a NON-INTERACTIVE ssh command will see them.
+# ~/.profile alone is not enough and that is the whole point of this function: `ssh host
+# 'command -v uv'` runs no login shell and sources no profile, so every user-space install
+# here -- uv, pre-commit, wandb, nvitop, bpytop, copilot, fresh -- was invisible to exactly
+# the caller that matters, an agent driving the box over ssh. Verified on the live host:
+# `command -v uv` empty, `bash -lc 'command -v uv'` found it.
+#
+# ~/.bashrc is read by non-interactive ssh commands when bash is the login shell (bash
+# reads it for remote-command invocations), and ~/.zshenv is read by zsh on EVERY
+# invocation, interactive or not. Writing all three is what makes the PATH true from any
+# entry point rather than only from a terminal.
 ensure_path_block() {
-  profile_file="$HOME/.profile"
   begin='# BEGIN dotfiles ubuntu-agent path'
   end='# END dotfiles ubuntu-agent path'
 
   export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
+  # Fresh is the default editor everywhere: EDITOR for anything that reads it, VISUAL for
+  # the richer callers, and both are what omp's Ctrl+G external-editor path consults.
+  # Helix is installed alongside and deliberately not named here.
+  export EDITOR=fresh
+  export VISUAL=fresh
 
-  touch "$profile_file"
-  if grep -q "$begin" "$profile_file"; then
-    return 0
-  fi
+  for profile_file in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshenv"; do
+    touch "$profile_file"
+    grep -q "$begin" "$profile_file" && continue
 
-  cat >> "$profile_file" <<'EOF'
+    cat >> "$profile_file" <<EOF
 
-# BEGIN dotfiles ubuntu-agent path
-export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
-# END dotfiles ubuntu-agent path
+$begin
+export PATH="\$HOME/.local/bin:\$HOME/.npm-global/bin:\$PATH"
+export EDITOR=fresh
+export VISUAL=fresh
+$end
 EOF
+  done
 }
 
 apt_install_missing() {
@@ -117,7 +142,7 @@ apt_install_missing() {
     fdfind:fd-find \
     tmux:tmux \
     zsh:zsh \
-    nvim:neovim \
+    xz:xz-utils \
     unzip:unzip \
     python3:python3 \
     pipx:pipx \
@@ -221,101 +246,266 @@ install_bpytop() {
   fi
 }
 
-nvim_is_modern() {
-  required_nvim_minor=11
-
-  have nvim || return 1
-
-  nvim_version=$(
-    NVIM_APPNAME=dotfiles-agent-version-check nvim --version 2>/dev/null |
-      sed -n '1s/^NVIM v//p'
-  )
-  nvim_major=${nvim_version%%.*}
-  nvim_rest=${nvim_version#*.}
-  nvim_minor=${nvim_rest%%.*}
-
-  case $nvim_major:$nvim_minor in
-    *[!0-9:]* | :* | *:)
-      return 1
-      ;;
-  esac
-
-  if [ "$nvim_major" -gt 0 ]; then
-    return 0
-  fi
-
-  [ "$nvim_major" -eq 0 ] && [ "$nvim_minor" -ge "$required_nvim_minor" ]
-}
-
-ensure_modern_neovim() {
-  if [ "$install_neovim" -eq 0 ]; then
-    return 0
-  fi
-
-  if nvim_is_modern; then
+# Fresh is the editor this setup installs and the one it makes default. The Linux
+# "universal build" is a single static musl binary under ~/.local, owned by the user: no
+# root, no distro package, and it updates itself with `fresh --cmd update`. That is the
+# only Linux install of it that can replace itself, which is what makes it a sane choice
+# on a box nobody administers.
+install_fresh() {
+  if [ "$install_editors" -eq 0 ]; then
     return 0
   fi
 
   have curl || {
-    info "curl not found; skipping modern Neovim install"
-    return 0
+    info "curl not found; cannot install fresh"
+    return 1
   }
 
-  have tar || {
-    info "tar not found; skipping modern Neovim install"
+  if have fresh; then
+    info "fresh present: $(fresh --version 2>/dev/null || echo unknown)"
     return 0
-  }
+  fi
 
-  info "installing Neovim 0.11+ in user space"
-  nvim_url="https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz"
-  nvim_opt_dir="$HOME/.local/opt"
-  nvim_install_dir="$nvim_opt_dir/nvim-linux-x86_64"
-  nvim_tmp_dir=$(mktemp -d)
-  nvim_archive="$nvim_tmp_dir/nvim-linux-x86_64.tar.gz"
+  # FRESH_NO_DESKTOP because this is a server: the desktop entry and icon theme the
+  # installer would copy into ~/.local/share have nothing to show them.
+  info "installing fresh"
+  FRESH_NO_DESKTOP=1 curl -fsSL \
+    https://raw.githubusercontent.com/sinelaw/fresh/refs/heads/master/scripts/install.sh |
+    sh
 
-  mkdir -p "$nvim_opt_dir" "$HOME/.local/bin"
-  curl -fsSL "$nvim_url" -o "$nvim_archive"
-  tar -xzf "$nvim_archive" -C "$nvim_tmp_dir"
-  rm -rf "$nvim_install_dir"
-  mv "$nvim_tmp_dir/nvim-linux-x86_64" "$nvim_install_dir"
-  ln -sfn "$nvim_install_dir/bin/nvim" "$HOME/.local/bin/nvim"
-  rm -rf "$nvim_tmp_dir"
   hash -r 2>/dev/null || true
 
-  if ! nvim_is_modern; then
-    info "Neovim 0.11+ is required for AstroNvim; modern Neovim install did not take effect"
-    exit 1
-  fi
+  have fresh || {
+    info "fresh install did not produce a usable binary"
+    return 1
+  }
 }
 
-install_astronvim() {
-  if [ "$install_neovim" -eq 0 ]; then
+# Helix is installed because it was asked for, not because anything defers to it. It is
+# never written into EDITOR/VISUAL -- `hx` is there when you want it and inert otherwise.
+install_helix() {
+  if [ "$install_editors" -eq 0 ]; then
     return 0
   fi
 
-  if ! nvim_is_modern; then
-    info "Neovim 0.11+ is required for AstroNvim"
-    exit 1
-  fi
-
-  nvim_dir="$HOME/.config/nvim"
-  marker="$nvim_dir/.dotfiles-ubuntu-agent-astronvim"
-
-  if [ -e "$nvim_dir" ] && [ ! -f "$marker" ]; then
-    info "existing Neovim config found at $nvim_dir; skipping AstroNvim setup"
+  if have hx; then
+    info "helix present: $(hx --version 2>/dev/null || echo unknown)"
     return 0
   fi
 
-  if [ ! -d "$nvim_dir/.git" ]; then
-    rm -rf "$nvim_dir"
-    mkdir -p "$(dirname -- "$nvim_dir")"
-    git clone https://github.com/AstroNvim/template "$nvim_dir"
+  # Ubuntu 24.04 has no helix package in the default archive; the PPA is the maintained
+  # route and the release tarball is the fallback when adding a PPA is not possible.
+  if have add-apt-repository && [ "$install_apt" -eq 1 ] && have sudo; then
+    sudo add-apt-repository -y ppa:maveonair/helix-editor >/dev/null 2>&1 || true
+    sudo apt-get update -qq >/dev/null 2>&1 || true
+    if sudo apt-get install -y -qq helix >/dev/null 2>&1; then
+      hash -r 2>/dev/null || true
+      have hx && return 0
+    fi
+  fi
+
+  have curl || {
+    info "curl not found; skipping helix"
+    return 0
+  }
+
+  helix_arch=$(uname -m)
+  case $helix_arch in
+    x86_64) helix_asset='x86_64-linux' ;;
+    aarch64 | arm64) helix_asset='aarch64-linux' ;;
+    *)
+      info "no helix build for $helix_arch; skipping"
+      return 0
+      ;;
+  esac
+
+  helix_url=$(
+    curl -fsSL https://api.github.com/repos/helix-editor/helix/releases/latest 2>/dev/null |
+      sed -n "s/.*\"browser_download_url\": *\"\([^\"]*${helix_asset}\.tar\.xz\)\".*/\1/p" |
+      head -1
+  )
+
+  [ -n "$helix_url" ] || {
+    info "could not resolve a helix release for $helix_asset; skipping"
+    return 0
+  }
+
+  helix_tmp=$(mktemp -d)
+  if curl -fsSL "$helix_url" -o "$helix_tmp/helix.tar.xz" &&
+    tar -xJf "$helix_tmp/helix.tar.xz" -C "$helix_tmp" 2>/dev/null; then
+    helix_root=$(find "$helix_tmp" -maxdepth 1 -type d -name 'helix-*' | head -1)
+    if [ -n "$helix_root" ] && [ -x "$helix_root/hx" ]; then
+      mkdir -p "$HOME/.local/bin" "$HOME/.config/helix"
+      cp "$helix_root/hx" "$HOME/.local/bin/hx"
+      chmod 755 "$HOME/.local/bin/hx"
+      # hx resolves its grammars and themes relative to this directory, so the runtime
+      # has to travel with the binary or every buffer opens unhighlighted.
+      [ -d "$helix_root/runtime" ] && cp -R "$helix_root/runtime" "$HOME/.config/helix/"
+    fi
+  fi
+  rm -rf "$helix_tmp"
+
+  hash -r 2>/dev/null || true
+  have hx || info "helix install did not produce a usable binary"
+}
+
+# Ubuntu ships fd as `fdfind` because the name `fd` was taken. Everything that expects
+# ripgrep-adjacent tooling -- including agents -- calls `fd`, and the README promises it,
+# so the shim is what makes the promise true. A real `fd` from elsewhere is left alone.
+ensure_fd_shim() {
+  have fd && return 0
+  have fdfind || return 0
+
+  mkdir -p "$HOME/.local/bin"
+  ln -sf "$(command -v fdfind)" "$HOME/.local/bin/fd"
+  hash -r 2>/dev/null || true
+}
+
+# The omp harness. This is the layer that actually brings language servers to the box:
+# the sandbox had NONE before this ran -- no pyright, ruff, marksman, yaml, bash, docker
+# or json server -- because nothing here installed any and nothing checked. omp's own
+# bin/install.sh provisions them under ~/.omp/agent/tools, so the correct fix is to run
+# it rather than to re-derive its list here and let the two drift.
+install_omp() {
+  if [ "$install_omp_harness" -eq 0 ]; then
+    return 0
+  fi
+
+  have git || {
+    info "git not found; cannot install omp"
+    return 1
+  }
+
+  omp_dir="$HOME/.omp/src"
+
+  if [ -d "$omp_dir/.git" ]; then
+    git -C "$omp_dir" remote set-url origin "$omp_repo_url"
+    git -C "$omp_dir" fetch --quiet origin
+    # Matching the dotfiles rule next door: a hand-edit is someone's work, so a dirty
+    # checkout is reported and left alone rather than reset out from under them.
+    omp_dirty=$(git -C "$omp_dir" status --porcelain)
+    if [ -n "$omp_dirty" ]; then
+      info "local changes in $omp_dir; skipping update"
+    else
+      git -C "$omp_dir" pull --ff-only --quiet || info "omp update did not fast-forward"
+    fi
   else
-    git -C "$nvim_dir" remote set-url origin https://github.com/AstroNvim/template
-    git -C "$nvim_dir" pull --ff-only
+    mkdir -p "$(dirname -- "$omp_dir")"
+    git clone --quiet "$omp_repo_url" "$omp_dir" || {
+      info "omp clone failed; skipping harness install"
+      return 0
+    }
   fi
 
-  touch "$marker"
+  [ -x "$omp_dir/bin/install.sh" ] || {
+    info "omp checkout has no bin/install.sh; skipping"
+    return 0
+  }
+
+  info "installing omp harness and its language servers"
+  ( cd "$omp_dir" && ./bin/install.sh ) || {
+    info "omp install.sh failed; language servers may be missing"
+    return 0
+  }
+
+  hash -r 2>/dev/null || true
+}
+
+# Fresh speaks LSP, and omp has just provisioned nine working servers under
+# ~/.omp/agent/tools. Pointing fresh at the same binaries means one set of servers rather
+# than a second copy that ages differently -- the config is generated FROM omp's
+# lsp.json, so adding a server there is enough and this file follows.
+#
+# Entries whose command does not resolve are skipped rather than written: fresh reports a
+# failing server per buffer, and a config full of dead commands is worse than a short one.
+wire_fresh_lsp() {
+  if [ "$install_editors" -eq 0 ] || [ "$install_omp_harness" -eq 0 ]; then
+    return 0
+  fi
+
+  omp_lsp="$HOME/.omp/agent/lsp.json"
+  [ -f "$omp_lsp" ] || {
+    info "no omp lsp.json; skipping fresh LSP wiring"
+    return 0
+  }
+  have python3 || return 0
+
+  mkdir -p "$HOME/.config/fresh"
+  python3 - "$omp_lsp" "$HOME/.config/fresh/config.json" <<'PY'
+import json
+import os
+import sys
+
+omp_lsp, fresh_cfg = sys.argv[1], sys.argv[2]
+
+# Which omp server answers for which fresh language id. Servers omp declares but does not
+# provision (pylsp, basedpyright: null command) fall out on the resolve check below.
+LANGUAGES = {
+    "pyright": ("python", ["--stdio"], ["pyproject.toml", "pyrightconfig.json", ".git"]),
+    "ruff": ("python", ["server"], ["pyproject.toml", "ruff.toml", ".git"]),
+    "marksman": ("markdown", ["server"], [".git"]),
+    "yamlls": ("yaml", ["--stdio"], [".git"]),
+    "bashls": ("bash", ["start"], [".git"]),
+    "dockerls": ("dockerfile", ["--stdio"], [".git"]),
+    "vscode-json-language-server": ("json", ["--stdio"], [".git"]),
+}
+
+with open(omp_lsp, encoding="utf-8") as fh:
+    servers = json.load(fh)
+servers = servers.get("servers", servers)
+
+by_language = {}
+for name, spec in servers.items():
+    if name.startswith("//") or name not in LANGUAGES:
+        continue
+    command = spec.get("command") if isinstance(spec, dict) else spec
+    # A declared-but-unprovisioned server has a null command; a stale one points at a path
+    # that no longer exists. Both are skipped, because fresh surfaces a dead server as a
+    # per-buffer error rather than silence.
+    if not command or not os.path.exists(command):
+        continue
+    language, args, roots = LANGUAGES[name]
+    by_language.setdefault(language, []).append(
+        {
+            "name": name,
+            "command": command,
+            "args": args,
+            "enabled": True,
+            "auto_start": True,
+            "root_markers": roots,
+        }
+    )
+
+if not by_language:
+    print("  no resolvable omp language servers; fresh LSP config unchanged")
+    raise SystemExit(0)
+
+config = {}
+if os.path.exists(fresh_cfg):
+    try:
+        with open(fresh_cfg, encoding="utf-8") as fh:
+            config = json.load(fh)
+    except (OSError, ValueError):
+        config = {}
+
+# Replace only the languages this script owns. Anything else the user configured in
+# fresh -- themes, keymaps, other servers -- is left exactly as it was.
+lsp = config.get("lsp")
+if not isinstance(lsp, dict):
+    lsp = {}
+lsp.update(by_language)
+config["lsp"] = lsp
+
+tmp = fresh_cfg + ".tmp"
+with open(tmp, "w", encoding="utf-8") as fh:
+    json.dump(config, fh, indent=2)
+    fh.write("\n")
+os.replace(tmp, fresh_cfg)
+
+print("  fresh language servers: " + ", ".join(sorted(
+    s["name"] for group in by_language.values() for s in group
+)))
+PY
 }
 
 install_github_cli() {
@@ -613,13 +803,44 @@ EOF
 healthcheck() {
   info ""
   info "ubuntu-agent healthcheck"
-  for cmd in git curl jq rg fdfind tmux zsh nvim python3 uv pre-commit wandb nvitop bpytop npm copilot gh az amlt; do
+  # `fd` as well as `fdfind`: Ubuntu ships the binary as fd-find and the README promises
+  # `fd`, so checking only the packaged name hid a gap the shim now closes.
+  for cmd in git curl jq rg fd fdfind tmux zsh python3 uv pre-commit wandb nvitop bpytop npm copilot gh az amlt fresh hx omp; do
     if have "$cmd"; then
       printf '  ok      %s\n' "$cmd"
     else
       printf '  missing %s\n' "$cmd"
     fi
   done
+
+  # The language servers, checked as files rather than as commands: they live under
+  # ~/.omp/agent/tools and are launched by path, never from PATH. Nothing verified these
+  # before, which is exactly how a box ends up with zero of them and a green healthcheck.
+  if [ -f "$HOME/.omp/agent/lsp.json" ] && have python3; then
+    python3 - "$HOME/.omp/agent/lsp.json" <<'PY'
+import json
+import os
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    servers = json.load(fh)
+servers = servers.get("servers", servers)
+
+for name, spec in sorted(servers.items()):
+    if name.startswith("//"):
+        continue
+    command = spec.get("command") if isinstance(spec, dict) else spec
+    if not command:
+        # Declared without a command: omp knows the server but does not provision it.
+        print(f"  --      lsp {name} (not provisioned)")
+    elif os.path.exists(command):
+        print(f"  ok      lsp {name}")
+    else:
+        print(f"  missing lsp {name}")
+PY
+  else
+    printf '  missing language servers (no omp lsp.json)\n'
+  fi
 
   for alias in github.com github-personal github-company; do
     if ssh -G "$alias" >/dev/null 2>&1; then
@@ -655,8 +876,11 @@ install_pre_commit
 install_wandb
 install_nvitop
 install_bpytop
-ensure_modern_neovim
-install_astronvim
+ensure_fd_shim
+install_fresh
+install_helix
+install_omp
+wire_fresh_lsp
 install_github_cli
 install_copilot_cli
 install_github_hosts
