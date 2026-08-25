@@ -4,7 +4,7 @@ set -eu
 # Cross-platform dotfiles installer (macOS + Debian/Ubuntu).
 # - Symlinks zsh / zim / tmux configs (always).
 # - Installs modern CLI tools the configs expect (zoxide, fzf, eza, bat, ...).
-# - Installs fresh (the default editor) and helix.
+# - Installs helix (the default editor) and fresh.
 # - Installs the omp coding harness and its Copilot endpoint.
 #
 # Usage:
@@ -217,7 +217,7 @@ install_nerdfont_linux() {
 }
 
 # --------------------------------------------------------------------------
-# Editors: fresh is the default, helix is available
+# Editors: helix is the default, fresh is available
 # --------------------------------------------------------------------------
 # Fresh replaces Neovim/AstroNvim here. On Linux it is one static musl binary under
 # ~/.local that updates itself; on macOS it is a brew formula. Helix installs beside it

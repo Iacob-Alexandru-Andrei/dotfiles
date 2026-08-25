@@ -18,7 +18,8 @@ dotfiles installer. Existing tools and config are detected and left in place.
 Missing apt packages are installed by default. Use --skip-apt to only report
 missing packages.
 
-Editors: fresh is installed and made the default (EDITOR/VISUAL); helix is
+Editors: helix is installed and made the default (EDITOR/VISUAL) because it is
+post-modal and behaves inside omp's Ctrl+G external-editor path; fresh is
 installed alongside it and is never made the default. --skip-editors skips both.
 
 The omp harness is installed from its own repository, which is what provisions
@@ -115,11 +116,21 @@ ensure_path_block() {
   end='# END dotfiles ubuntu-agent path'
 
   export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
-  # Fresh is the default editor everywhere: EDITOR for anything that reads it, VISUAL for
+  # Helix is the default editor everywhere: EDITOR for anything that reads it, VISUAL for
   # the richer callers, and both are what omp's Ctrl+G external-editor path consults.
-  # Helix is installed alongside and deliberately not named here.
-  export EDITOR=fresh
-  export VISUAL=fresh
+  #
+  # Helix rather than fresh because of that path specifically. Helix is post-modal: it
+  # opens on a file, edits it, writes it and exits, which is the entire contract a
+  # `$VISUAL` invocation has. Fresh is a visual editor that does not behave inside omp,
+  # so naming it here made Ctrl+G the broken key. Fresh is still installed and `fresh`
+  # still runs it -- it is simply not what other programs hand a buffer to.
+  if have hx; then
+    export EDITOR=hx
+    export VISUAL=hx
+  elif have fresh; then
+    export EDITOR=fresh
+    export VISUAL=fresh
+  fi
 
   for profile_file in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshenv"; do
     touch "$profile_file"
@@ -131,8 +142,18 @@ ensure_path_block() {
     {
       printf '%s\n' "$begin"
       printf 'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"\n'
-      printf 'export EDITOR=fresh\n'
-      printf 'export VISUAL=fresh\n'
+      # Resolved when the shell starts rather than now. This function runs BEFORE
+      # `install_helix`, so a check made here would answer for a machine that does not
+      # exist yet; and a bare `EDITOR=hx` would name a program that is not there if that
+      # install later fails. Fresh is the fallback, so the worst case is the old default
+      # rather than a shell whose $EDITOR cannot run.
+      printf 'if command -v hx >/dev/null 2>&1; then\n'
+      printf '  export EDITOR=hx\n'
+      printf '  export VISUAL=hx\n'
+      printf 'elif command -v fresh >/dev/null 2>&1; then\n'
+      printf '  export EDITOR=fresh\n'
+      printf '  export VISUAL=fresh\n'
+      printf 'fi\n'
       printf '%s\n\n' "$end"
       awk -v b="$begin" -v e="$end" '$0 == b { skip = 1; next } $0 == e { skip = 0; next } !skip { print }' "$profile_file"
     } > "$next"
@@ -291,8 +312,9 @@ install_fresh() {
   }
 }
 
-# Helix is installed because it was asked for, not because anything defers to it. It is
-# never written into EDITOR/VISUAL -- `hx` is there when you want it and inert otherwise.
+# Helix is what EDITOR and VISUAL name, so this is the editor every other program hands a
+# buffer to -- git, and omp's Ctrl+G among them. It earns that by being post-modal: it
+# opens on a path, writes, and exits, which is the whole contract those callers rely on.
 install_helix() {
   if [ "$install_editors" -eq 0 ]; then
     return 0
@@ -1048,6 +1070,11 @@ PY
 require_ubuntu
 ensure_path_block
 apt_install_missing
+# BEFORE anything that speaks to npm. `install_omp` provisions language servers from the
+# registry and used to run four lines above the only caller of this function, so on a
+# corporate box the servers were fetched from a registry that answers nothing and the
+# mirror was selected afterwards, for the next run. Ordering was the whole bug.
+ensure_npm_registry
 install_uv
 install_pre_commit
 install_wandb

@@ -251,16 +251,33 @@ for profile in .profile .bashrc .zshenv; do
     fail "ensure_path_block must write $profile so non-interactive ssh sees the PATH"
   grep -q '.local/bin' "$editor_home/$profile" ||
     fail "$profile must put .local/bin on PATH"
+  # Resolved AT SHELL STARTUP, not at install time. `ensure_path_block` runs before
+  # `install_helix`, so a `command -v hx` asked while writing this block is always
+  # false; and a bare `EDITOR=hx` written unconditionally leaves a host whose helix
+  # install failed with an $EDITOR that is not a program. The chain is what makes
+  # both cases correct, and it degrades to fresh rather than to nothing.
+  grep -q 'command -v hx' "$editor_home/$profile" ||
+    fail "$profile must resolve helix at shell startup, not at install time"
+  grep -q 'EDITOR=hx' "$editor_home/$profile" ||
+    fail "$profile must make helix the default editor"
+  grep -q 'VISUAL=hx' "$editor_home/$profile" ||
+    fail "$profile must set VISUAL so omp external editor uses helix"
   grep -q 'EDITOR=fresh' "$editor_home/$profile" ||
-    fail "$profile must make fresh the default editor"
-  grep -q 'VISUAL=fresh' "$editor_home/$profile" ||
-    fail "$profile must set VISUAL so omp external editor uses fresh"
+    fail "$profile must fall back to fresh when helix is absent"
 done
 
-# Helix is installed but must never be made the default.
-if grep -qE 'EDITOR=(hx|helix)|VISUAL=(hx|helix)' "$repo_dir/ubuntu-agent/install.sh"; then
-  fail 'helix must not be set as the default editor'
-fi
+# Helix is post-modal and behaves inside omp's Ctrl+G external-editor path; fresh is a
+# visual editor that does not, which is why the default moved. Fresh is still INSTALLED
+# and is still the FALLBACK, so this asserts the preference ORDER rather than the
+# absence of the string: an earlier version banned `EDITOR=fresh` outright and would
+# have forbidden the fallback that keeps a helix-less host usable.
+written=$(grep -n 'EDITOR=hx\|EDITOR=fresh' "$repo_dir/ubuntu-agent/install.sh" | head -2)
+printf '%s\n' "$written" | head -1 | grep -q 'EDITOR=hx' ||
+  fail 'helix must be preferred over fresh wherever the default editor is chosen'
+grep -q '^install_fresh$' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail 'fresh must still be installed even though it is no longer the default'
+grep -q '^install_helix$' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail 'helix must still be installed'
 
 # Idempotent: a second run must not stack a second block.
 run_installer_fn ensure_path_block >/dev/null 2>&1 || true
@@ -385,6 +402,25 @@ guard_at=$(printf '%s\n' "$copilot_body" | grep -n 'have copilot' | head -1 | cu
 [ -n "$guard_at" ] || fail 'install_copilot_cli must keep its have-copilot guard'
 [ "$reg_at" -lt "$guard_at" ] ||
   fail "the npm registry must be set before the have-copilot early return"
+
+# ...and before every OTHER npm consumer too, which is the half the function-local
+# assertion above cannot see. `install_omp` provisions language servers from the
+# registry, and it used to run at line 1059 while the only caller of
+# `ensure_npm_registry` ran at 1063 -- so on a corporate box the servers were fetched
+# from a registry that answers nothing, and the mirror was selected four lines later,
+# in time for the NEXT run. The top-level call sequence is what this pins.
+calls=$(grep -n '^[a-z_][a-z_]*$' "$repo_dir/ubuntu-agent/install.sh")
+top_reg=$(printf '%s\n' "$calls" | grep 'ensure_npm_registry$' | head -1 | cut -d: -f1)
+top_omp=$(printf '%s\n' "$calls" | grep 'install_omp$' | head -1 | cut -d: -f1)
+top_cop=$(printf '%s\n' "$calls" | grep 'install_copilot_cli$' | head -1 | cut -d: -f1)
+[ -n "$top_reg" ] ||
+  fail 'ensure_npm_registry must be called at top level, not only from install_copilot_cli'
+[ -n "$top_omp" ] || fail 'install_omp must be called at top level'
+[ -n "$top_cop" ] || fail 'install_copilot_cli must be called at top level'
+[ "$top_reg" -lt "$top_omp" ] ||
+  fail "the npm registry must be selected before install_omp fetches language servers"
+[ "$top_reg" -lt "$top_cop" ] ||
+  fail "the npm registry must be selected before install_copilot_cli"
 
 grep -q 'packagefeedproxy.microsoft.io' "$repo_dir/ubuntu-agent/install.sh" ||
   fail 'the internal npm mirror must be configured'
