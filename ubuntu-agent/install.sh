@@ -1064,7 +1064,12 @@ PY
   fi
 
   info ""
-  info "Manual auth still required where needed: gh auth login, copilot login, az login, amlt project checkout."
+  # ONE command rather than four to type by hand. These are device flows needing a
+  # browser, so they cannot run here: this script is invoked over a non-interactive ssh
+  # from another machine, where a device code scrolls past unread and expires.
+  info "Interactive logins are not done here. On that host, run:"
+  info "  ssh -t <host> '~/.dotfiles/ubuntu-agent/login.sh'"
+  info "It asks for gh, copilot, az and wandb in turn, skipping any that already hold."
 }
 
 require_ubuntu
