@@ -80,6 +80,7 @@ satisfied() {
 # `corp_macbook`. The upload happens straight after, unattended, under the key's name.
 GOD_ROOT="$HOME/projects/god"
 GH_ROUTE="$GOD_ROOT/memory/bin/gh-for-repo.py"
+AS_CHECKOUT="${AGENTIC_SEARCH_CHECKOUT:-$GOD_ROOT/repos/stack/agentic-search}"
 
 # Every account this host should hold, as `route:key` -- the two halves the routing file
 # already pairs, restated only as far as naming which module stands for which account.
@@ -210,14 +211,26 @@ fi
 # than trusting that a file appeared. It is also the credential omp and the endpoint
 # proxy actually read, which the CLI's config directory is not.
 if wanted copilot; then
+  # Installed rather than complained about. Telling an operator to go run
+  # `uv tool install .` in another directory is a step that can fail silently and a
+  # login run that ends without a credential -- which is what happened here. The
+  # checkout is a prerequisite of the harness, not of this script, so a missing one is
+  # still reported; a missing INSTALL is simply performed.
+  if ! have agentic-search-omp && [ -f "$AS_CHECKOUT/pyproject.toml" ] && have uv; then
+    printf '\n    installing the agentic-search harness first\n'
+    ( cd "$AS_CHECKOUT" && uv tool install -q . ) 2>&1 | tail -2
+    hash -r 2>/dev/null || true
+  fi
+
   if ! have agentic-search-omp; then
-    printf '\n!!  agentic-search-omp is not installed; run `uv tool install .`\n' >&2
-    printf '    in ~/projects/god/repos/stack/agentic-search first\n' >&2
+    printf '\n!!  no agentic-search harness, and none at %s\n' "$AS_CHECKOUT" >&2
+    printf '    clone it there, or `uv tool install .` from wherever it lives\n' >&2
   elif [ -s "$HOME/.judge_copilot_token" ] && ! forced copilot; then
     announce 'Copilot (via the agentic-search harness)'
     satisfied "$HOME/.judge_copilot_token"
   else
     announce 'Copilot -- one device code, then a browser'
+    printf '    LOG IN AS: %s\n' "$(expected_login work)"
     agentic-search-omp login || printf '!!  copilot login did not complete\n' >&2
   fi
 fi
