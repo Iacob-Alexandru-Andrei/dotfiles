@@ -374,7 +374,7 @@ printf '\n'
 info 'Done.'
 printf 'Open a new zsh session or run: exec zsh\n'
 printf 'For an existing tmux server, run: tmux source-file ~/.tmux.conf\n'
-[ "$INSTALL_EDITORS" -eq 1 ] && printf 'Launch the editor with: fresh   (helix: hx)\n'
+[ "$INSTALL_EDITORS" -eq 1 ] && printf 'Launch the editor with: hx   (fresh: fresh)\n'
 # STATED EVERY TIME, installed or not. A summary that mentions omp only on success is one
 # where its absence looks like it was never meant to be there.
 case "$OMP_STATUS" in
