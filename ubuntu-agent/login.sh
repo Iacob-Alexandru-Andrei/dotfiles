@@ -81,6 +81,8 @@ satisfied() {
 GOD_ROOT="$HOME/projects/god"
 GH_ROUTE="$GOD_ROOT/memory/bin/gh-for-repo.py"
 AS_CHECKOUT="${AGENTIC_SEARCH_CHECKOUT:-$GOD_ROOT/repos/stack/agentic-search}"
+AS_REMOTE="${AGENTIC_SEARCH_REMOTE:-git@github-company:msr-ai4science/agentic-search.git}"
+GOD_REMOTE="${GOD_REPO_REMOTE:-git@github-personal:Iacob-Alexandru-Andrei/god.git}"
 
 # Every account this host should hold, as `route:key` -- the two halves the routing file
 # already pairs, restated only as far as naming which module stands for which account.
@@ -144,12 +146,40 @@ upload_key() {
     printf '!!  could not upload %s\n' "$key_name" >&2
 }
 
+# The routing wrapper lives in the god root, so a host without that checkout cannot
+# route anything -- and this script would previously stop and say so. It is a personal
+# repository cloned over ssh with a key `install-ubuntu-agent-on-host` has already
+# placed, so no login is needed to fetch it and there is no reason to ask.
+#
+# Only the two files routing needs, and only when they are absent. The submodules stay
+# uninitialised: this is not a checkout to work in, it is the map that says which
+# account owns which module.
+bootstrap_god_root() {
+  [ ! -f "$GH_ROUTE" ] || return 0
+
+  printf '\n    fetching the god routing files into %s\n' "$GOD_ROOT"
+  mkdir -p "$GOD_ROOT" || return 1
+  ( cd "$GOD_ROOT" &&
+    { [ -d .git ] || git init -q; } &&
+    { git remote get-url origin >/dev/null 2>&1 ||
+        git remote add origin "$GOD_REMOTE"; } &&
+    git fetch -q --depth 1 origin main &&
+    git checkout -q FETCH_HEAD -- .github/account-routing.toml .gitmodules
+  ) >/dev/null 2>&1 || return 1
+
+  [ -f "$GH_ROUTE" ] || (
+    cd "$GOD_ROOT" && git checkout -q FETCH_HEAD -- memory/bin/gh-for-repo.py
+  ) >/dev/null 2>&1
+
+  [ -f "$GH_ROUTE" ]
+}
+
 if wanted gh; then
   if ! have gh; then
     printf '\n!!  gh is not installed; run ubuntu-agent/install.sh first\n' >&2
-  elif [ ! -f "$GH_ROUTE" ]; then
-    printf '\n!!  no gh routing wrapper at %s\n' "$GH_ROUTE" >&2
-    printf '    clone the god root there first; this host cannot route two accounts\n' >&2
+  elif [ ! -f "$GH_ROUTE" ] && ! bootstrap_god_root; then
+    printf '\n!!  no gh routing wrapper at %s, and could not fetch one\n' "$GH_ROUTE" >&2
+    printf '    this host cannot route two accounts until the god root exists\n' >&2
   else
     for pair in $GH_ACCOUNTS; do
       route=${pair%%:*}
@@ -211,20 +241,29 @@ fi
 # than trusting that a file appeared. It is also the credential omp and the endpoint
 # proxy actually read, which the CLI's config directory is not.
 if wanted copilot; then
-  # Installed rather than complained about. Telling an operator to go run
-  # `uv tool install .` in another directory is a step that can fail silently and a
-  # login run that ends without a credential -- which is what happened here. The
-  # checkout is a prerequisite of the harness, not of this script, so a missing one is
-  # still reported; a missing INSTALL is simply performed.
+  # CLONED, then installed. Both were once "run this yourself in another directory",
+  # and both are steps a login run can simply take: the work account has just been
+  # authenticated a few lines above, and `github-company` is the ssh alias it signs
+  # with, so the clone is authorised by the thing this script exists to establish.
+  #
+  # Guarded on that account actually being present rather than on the URL: a clone
+  # attempted without it fails with an ssh error that says nothing about the cause.
+  if [ ! -d "$AS_CHECKOUT/.git" ] && route_gh repos/reactions auth status >/dev/null 2>&1; then
+    printf '\n    cloning agentic-search into %s\n' "$AS_CHECKOUT"
+    mkdir -p "$(dirname -- "$AS_CHECKOUT")"
+    git clone -q "$AS_REMOTE" "$AS_CHECKOUT" 2>&1 | tail -2 ||
+      printf '!!  could not clone %s\n' "$AS_REMOTE" >&2
+  fi
+
   if ! have agentic-search-omp && [ -f "$AS_CHECKOUT/pyproject.toml" ] && have uv; then
-    printf '\n    installing the agentic-search harness first\n'
+    printf '    installing the agentic-search harness\n'
     ( cd "$AS_CHECKOUT" && uv tool install -q . ) 2>&1 | tail -2
     hash -r 2>/dev/null || true
   fi
 
   if ! have agentic-search-omp; then
-    printf '\n!!  no agentic-search harness, and none at %s\n' "$AS_CHECKOUT" >&2
-    printf '    clone it there, or `uv tool install .` from wherever it lives\n' >&2
+    printf '\n!!  no agentic-search harness at %s\n' "$AS_CHECKOUT" >&2
+    have uv || printf '    uv is missing; run ubuntu-agent/install.sh first\n' >&2
   elif [ -s "$HOME/.judge_copilot_token" ] && ! forced copilot; then
     announce 'Copilot (via the agentic-search harness)'
     satisfied "$HOME/.judge_copilot_token"
