@@ -265,6 +265,28 @@ install_mesh() {
 
   copy_key_if_requested "sandbox mesh" "$mesh_key" "sandbox-mesh"
 
+  # AND AUTHORIZE IT. Copying the private key lets this host *offer* the mesh
+  # identity; nothing accepts it until the matching public key is in the remote's
+  # `authorized_keys`. Measured before this existed: every sandbox held
+  # `~/.ssh/sandbox-mesh`, every mesh probe reported `no key`, and the mesh was
+  # entirely non-functional while looking fully provisioned.
+  #
+  # `grep -qF` rather than an unconditional append, because this script is run
+  # repeatedly against the same host and a duplicated key is noise that hides the
+  # entries that matter.
+  if [ -f "$mesh_key.pub" ]; then
+    printf 'authorizing the sandbox mesh key on remote ~/.ssh/authorized_keys\n'
+    mesh_pub=$(cat "$mesh_key.pub")
+    ssh "$host" "set -eu
+umask 077
+mkdir -p \"\$HOME/.ssh\"
+chmod 700 \"\$HOME/.ssh\"
+touch \"\$HOME/.ssh/authorized_keys\"
+chmod 600 \"\$HOME/.ssh/authorized_keys\"
+grep -qF '$mesh_pub' \"\$HOME/.ssh/authorized_keys\" ||
+  printf '%s\n' '$mesh_pub' >>\"\$HOME/.ssh/authorized_keys\""
+  fi
+
   printf 'installing sandbox host aliases on remote ~/.ssh/config\n'
   printf '%s\n' "$mesh_hosts" | ssh "$host" "set -eu
 umask 077

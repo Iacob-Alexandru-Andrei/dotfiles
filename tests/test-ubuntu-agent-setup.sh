@@ -535,4 +535,14 @@ if grep -q 'ubuntu-agent' "$repo_dir/install.sh"; then
   fail "normal install.sh must not invoke ubuntu-agent setup"
 fi
 
+# A mesh key that is copied but never authorized leaves every host holding an
+# identity nothing accepts. That state looked fully provisioned -- the key file
+# was present on all four sandboxes -- while every host-to-host connection was
+# refused, so it is worth a test rather than a comment.
+grep -q 'authorized_keys' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
+  fail "--mesh must authorize the mesh public key, not just copy the private one"
+
+grep -q 'grep -qF' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
+  fail "authorized_keys append must be idempotent; this script is rerun on the same host"
+
 printf 'ubuntu-agent setup static checks passed\n'
