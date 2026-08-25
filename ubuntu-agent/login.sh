@@ -91,6 +91,23 @@ route_gh() {
   python3 "$GH_ROUTE" --repo "$route" -- "$@"
 }
 
+# Which account a route belongs to, asked of the routing file rather than assumed here.
+route_account() {
+  python3 "$GH_ROUTE" --repo "$1" --print-env 2>/dev/null |
+    python3 -c 'import json,sys; print(json.load(sys.stdin)["account"]["name"])' 2>/dev/null
+}
+
+# The GitHub login each account signs in as. This is the one fact the routing file does
+# not carry -- it names hosts, key aliases and config dirs, but never the username -- and
+# without it the script can print a device code but not say whose it is. Overridable per
+# host for anyone whose accounts differ.
+expected_login() {
+  case $1 in
+    personal) printf '%s' "${GH_LOGIN_PERSONAL:-Iacob-Alexandru-Andrei}" ;;
+    work) printf '%s' "${GH_LOGIN_WORK:-alexiacob_microsoft}" ;;
+  esac
+}
+
 # Uploaded automatically, under the SAME NAME the key already has on disk and on every
 # other host. gh's own offer to do this is what `--skip-ssh-key` above declines: it
 # stops the run to ask permission, then asks for a title, and a title typed per host is
@@ -136,19 +153,45 @@ if wanted gh; then
     for pair in $GH_ACCOUNTS; do
       route=${pair%%:*}
       key=${pair#*:}
+      account=$(route_account "$route")
+      expect=$(expected_login "$account")
 
       if route_gh "$route" auth status >/dev/null 2>&1 && ! forced gh; then
-        announce "GitHub -- $route"
+        announce "GitHub -- $account"
         satisfied "$(route_gh "$route" api user --jq '.login' 2>/dev/null)"
       else
-        announce "GitHub -- $route -- one device code, then a browser"
+        # NAMED before the code is printed. Two device codes in one run, one per
+        # account, and nothing on screen said which was which -- so the first was
+        # answered with the work account and the personal config dir ended up holding
+        # `alexiacob_microsoft`. Everything after that failed in a way that reads like a
+        # scope problem and is not one.
+        announce "GitHub -- $account account"
+        printf '    LOG IN AS: %s\n' "$expect"
+        printf '    open https://github.com/login/device in a browser and enter the code\n'
         route_gh "$route" auth login --hostname github.com --git-protocol ssh \
           --skip-ssh-key --scopes admin:public_key --web ||
-          printf '!!  gh login did not complete for %s\n' "$route" >&2
+          printf '!!  gh login did not complete for the %s account\n' "$account" >&2
+      fi
+
+      # Whoever actually answered, checked against who this route is for. gh will
+      # happily store the wrong account and report success; the failure only surfaces
+      # later, as a refresh that says "received credentials for ..." -- which is
+      # exactly how this was found.
+      actual=$(route_gh "$route" api user --jq '.login' 2>/dev/null)
+      if [ -n "$actual" ] && [ -n "$expect" ] && [ "$actual" != "$expect" ]; then
+        # Cleared rather than reported. A config dir holding the wrong account cannot be
+        # corrected by logging in again -- gh refuses with "received credentials for
+        # ..., did you use the correct account", and every later run repeats it. The
+        # only way out is to drop the stored session, and leaving that to the operator
+        # means the next run fails identically.
+        printf '!!  the %s route holds %s, not %s -- clearing it\n' "$account" "$actual" "$expect" >&2
+        route_gh "$route" auth logout --hostname github.com >/dev/null 2>&1
+        printf '    run login.sh again and sign in as %s\n' "$expect" >&2
+        continue
       fi
 
       # Inside this account's configuration, so the key cannot land on the other one.
-      route_gh "$route" auth status >/dev/null 2>&1 && upload_key "$route" "$key"
+      [ -n "$actual" ] && upload_key "$route" "$key"
     done
   fi
 fi
