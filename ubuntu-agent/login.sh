@@ -59,27 +59,37 @@ satisfied() {
 
 # --- GitHub -----------------------------------------------------------------------
 #
-# FIRST, and not merely by convention: `copilot login` and the endpoint proxy both read
-# a GitHub token, and `gh auth token` is where the proxy looks after $GITHUB_TOKEN. A
-# host that skips this has no Copilot regardless of what the next step reports.
+# BOTH accounts, each through `god/memory/bin/gh-for-repo.py`. That wrapper is the
+# canonical routing on the laptop -- it reads `.github/account-routing.toml`, selects
+# that module's `GH_CONFIG_DIR`, and runs gh there. Calling it is what makes this host
+# a mirror rather than an imitation: the account-to-key pairing lives in one committed
+# file, and duplicating it here is how the two drift.
+#
+# A route is a MODULE PATH, not an account name: `.` is the god root, which routing
+# maps to personal, and `repos/reactions` maps to work. Uploading a key through the
+# wrong configuration is what attaches a personal key to the work account; running each
+# upload inside its own config dir makes that impossible rather than merely unlikely.
+#
+# FIRST among the steps, and not by convention: the endpoint proxy reads a GitHub token
+# and falls back to `gh auth token`, so a host that skips this has no Copilot whatever
+# the next step reports.
 #
 # `--skip-ssh-key` declines gh's INTERACTIVE offer to upload a key, not the upload
-# itself: that offer stops the run to ask permission and then asks for a title, which
-# is how one key acquires a different name on every host -- this account already
-# carries one called `corp_macbook`. The upload happens straight after, unattended and
-# under the key's own name; see `upload_key` below.
-if wanted gh; then
-  if ! have gh; then
-    printf '\n!!  gh is not installed; run ubuntu-agent/install.sh first\n' >&2
-  elif gh auth status >/dev/null 2>&1 && ! forced gh; then
-    announce 'GitHub CLI'
-    satisfied "$(gh auth status 2>&1 | sed -n 's/.*Logged in to [^ ]* account \([^ ]*\).*/\1/p' | head -1)"
-  else
-    announce 'GitHub CLI -- one device code, then a browser'
-    gh auth login --hostname github.com --git-protocol ssh --skip-ssh-key --web ||
-      printf '!!  gh login did not complete\n' >&2
-  fi
-fi
+# itself: that offer stops to ask permission and then asks for a title, which is how one
+# key acquires a different name on every host -- this account already carries one called
+# `corp_macbook`. The upload happens straight after, unattended, under the key's name.
+GOD_ROOT="$HOME/projects/god"
+GH_ROUTE="$GOD_ROOT/memory/bin/gh-for-repo.py"
+
+# Every account this host should hold, as `route:key` -- the two halves the routing file
+# already pairs, restated only as far as naming which module stands for which account.
+GH_ACCOUNTS='.:github-personal repos/reactions:github-company'
+
+route_gh() {
+  route=$1
+  shift
+  python3 "$GH_ROUTE" --repo "$route" -- "$@"
+}
 
 # Uploaded automatically, under the SAME NAME the key already has on disk and on every
 # other host. gh's own offer to do this is what `--skip-ssh-key` above declines: it
@@ -88,37 +98,51 @@ fi
 # `laptop` on the third. The fingerprint is the identity, so a key already on the
 # account is left alone rather than uploaded twice under a new name.
 upload_key() {
-  key_name=$1
+  route=$1
+  key_name=$2
   pub="$HOME/.ssh/$key_name.pub"
 
   [ -f "$pub" ] || return 0
 
   # Compare on the key BODY -- field 2 -- because the trailing comment differs between
   # what is on disk and what GitHub echoes back, so a whole-line match never hits and
-  # every run would upload a duplicate.
+  # every run would upload a duplicate. Measured against the live account rather than
+  # assumed: `gh ssh-key list` does print the body, and the existing key matched.
   body=$(awk '{print $2}' "$pub")
-  if gh ssh-key list 2>/dev/null | grep -qF "$body"; then
-    return 0
-  fi
+  route_gh "$route" ssh-key list 2>/dev/null | grep -qF "$body" && return 0
 
   printf '    uploading %s\n' "$key_name"
-  gh ssh-key add "$pub" --title "$key_name" >/dev/null 2>&1 ||
+  route_gh "$route" ssh-key add "$pub" --title "$key_name" >/dev/null 2>&1 ||
     printf '!!  could not upload %s (needs the admin:public_key scope)\n' "$key_name" >&2
 }
 
-# ONE key, chosen by which account gh is actually logged in as. There is a single gh
-# session here, so uploading both would attach the personal key to the work account --
-# which is precisely the cross-account leak the per-module routing in the god repo
-# exists to prevent. The account name decides, and an unrecognised one uploads nothing
-# rather than guessing.
-if wanted gh && have gh && gh auth status >/dev/null 2>&1; then
-  gh_account=$(gh api user --jq '.login' 2>/dev/null)
-  case $gh_account in
-    *_microsoft|*-microsoft) upload_key github-company ;;
-    '') printf '    could not read the gh account; skipping key upload\n' ;;
-    *) upload_key github-personal ;;
-  esac
+if wanted gh; then
+  if ! have gh; then
+    printf '\n!!  gh is not installed; run ubuntu-agent/install.sh first\n' >&2
+  elif [ ! -f "$GH_ROUTE" ]; then
+    printf '\n!!  no gh routing wrapper at %s\n' "$GH_ROUTE" >&2
+    printf '    clone the god root there first; this host cannot route two accounts\n' >&2
+  else
+    for pair in $GH_ACCOUNTS; do
+      route=${pair%%:*}
+      key=${pair#*:}
+
+      if route_gh "$route" auth status >/dev/null 2>&1 && ! forced gh; then
+        announce "GitHub -- $route"
+        satisfied "$(route_gh "$route" api user --jq '.login' 2>/dev/null)"
+      else
+        announce "GitHub -- $route -- one device code, then a browser"
+        route_gh "$route" auth login --hostname github.com --git-protocol ssh \
+          --skip-ssh-key --web ||
+          printf '!!  gh login did not complete for %s\n' "$route" >&2
+      fi
+
+      # Inside this account's configuration, so the key cannot land on the other one.
+      route_gh "$route" auth status >/dev/null 2>&1 && upload_key "$route" "$key"
+    done
+  fi
 fi
+
 
 # --- Copilot ----------------------------------------------------------------------
 #
