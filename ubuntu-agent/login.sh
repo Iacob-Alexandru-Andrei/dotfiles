@@ -111,9 +111,19 @@ upload_key() {
   body=$(awk '{print $2}' "$pub")
   route_gh "$route" ssh-key list 2>/dev/null | grep -qF "$body" && return 0
 
+  # The scope is asked for HERE rather than only at login, because a session that
+  # already existed was granted whatever the earlier run requested -- and the first run
+  # of this script requested none, so `ssh-key add` came back "needs the
+  # admin:public_key scope" against a perfectly valid login. `auth refresh` adds it to
+  # the session in place, and is a no-op when it is already held.
   printf '    uploading %s\n' "$key_name"
+  route_gh "$route" ssh-key add "$pub" --title "$key_name" >/dev/null 2>&1 && return 0
+
+  printf '    granting admin:public_key first\n'
+  route_gh "$route" auth refresh --hostname github.com -s admin:public_key ||
+    printf '!!  could not add the admin:public_key scope for %s\n' "$route" >&2
   route_gh "$route" ssh-key add "$pub" --title "$key_name" >/dev/null 2>&1 ||
-    printf '!!  could not upload %s (needs the admin:public_key scope)\n' "$key_name" >&2
+    printf '!!  could not upload %s\n' "$key_name" >&2
 }
 
 if wanted gh; then
@@ -133,7 +143,7 @@ if wanted gh; then
       else
         announce "GitHub -- $route -- one device code, then a browser"
         route_gh "$route" auth login --hostname github.com --git-protocol ssh \
-          --skip-ssh-key --web ||
+          --skip-ssh-key --scopes admin:public_key --web ||
           printf '!!  gh login did not complete for %s\n' "$route" >&2
       fi
 
