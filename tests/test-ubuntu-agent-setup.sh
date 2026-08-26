@@ -274,9 +274,9 @@ done
 written=$(grep -n 'EDITOR=hx\|EDITOR=fresh' "$repo_dir/ubuntu-agent/install.sh" | head -2)
 printf '%s\n' "$written" | head -1 | grep -q 'EDITOR=hx' ||
   fail 'helix must be preferred over fresh wherever the default editor is chosen'
-grep -q '^install_fresh$' "$repo_dir/ubuntu-agent/install.sh" ||
+grep -q '^ *install_fresh$' "$repo_dir/ubuntu-agent/install.sh" ||
   fail 'fresh must still be installed even though it is no longer the default'
-grep -q '^install_helix$' "$repo_dir/ubuntu-agent/install.sh" ||
+grep -q '^ *install_helix$' "$repo_dir/ubuntu-agent/install.sh" ||
   fail 'helix must still be installed'
 
 # Idempotent: a second run must not stack a second block.
@@ -358,8 +358,8 @@ if grep -q '^  repo_dir=' "$repo_dir/ubuntu-agent/install.sh"; then
 fi
 
 if ! awk '
-  /^install_github_hosts$/ { github_line = NR }
-  /^install_copilot_skills$/ { skills_line = NR }
+  /^ *install_github_hosts$/ { github_line = NR }
+  /^ *install_copilot_skills$/ { skills_line = NR }
   END { exit !(github_line && skills_line && github_line < skills_line) }
 ' "$repo_dir/ubuntu-agent/install.sh"; then
   fail "GitHub SSH aliases must be configured before cloning private skill repos"
@@ -408,8 +408,10 @@ guard_at=$(printf '%s\n' "$copilot_body" | grep -n 'have copilot' | head -1 | cu
 # registry, and it used to run at line 1059 while the only caller of
 # `ensure_npm_registry` ran at 1063 -- so on a corporate box the servers were fetched
 # from a registry that answers nothing, and the mirror was selected four lines later,
-# in time for the NEXT run. The top-level call sequence is what this pins.
-calls=$(grep -n '^[a-z_][a-z_]*$' "$repo_dir/ubuntu-agent/install.sh")
+# in time for the NEXT run. The call sequence inside `main` is what this pins; the
+# leading indent is allowed because those calls moved into a function when the script
+# was made sourceable.
+calls=$(grep -n '^ *[a-z_][a-z_]*$' "$repo_dir/ubuntu-agent/install.sh")
 top_reg=$(printf '%s\n' "$calls" | grep 'ensure_npm_registry$' | head -1 | cut -d: -f1)
 top_omp=$(printf '%s\n' "$calls" | grep 'install_omp$' | head -1 | cut -d: -f1)
 top_cop=$(printf '%s\n' "$calls" | grep 'install_copilot_cli$' | head -1 | cut -d: -f1)

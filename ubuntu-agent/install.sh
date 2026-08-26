@@ -28,50 +28,60 @@ those servers into fresh.
 EOF
 }
 
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --with-dotfiles)
-      with_dotfiles=1
-      shift
-      ;;
-    --install-apt)
-      install_apt=1
-      shift
-      ;;
-    --skip-apt)
-      install_apt=0
-      shift
-      ;;
-    --skip-editors)
-      install_editors=0
-      shift
-      ;;
-    --skip-omp)
-      install_omp_harness=0
-      shift
-      ;;
-    --minimal)
-      dotfiles_args="$dotfiles_args --minimal"
-      install_editors=0
-      shift
-      ;;
-    --no-packages)
-      dotfiles_args="$dotfiles_args --no-packages"
-      shift
-      ;;
-    -h|--help)
-      usage
-      exit 0
-      ;;
-    *)
-      printf 'unknown option: %s\n' "$1" >&2
-      usage
-      exit 2
-      ;;
-  esac
-done
+# PARSING IS A FUNCTION, so sourcing this file defines things without deciding anything. It
+# ran at the top level and therefore on every source, which meant a caller that only wanted
+# one function got the whole argument vector parsed -- and a test sourcing the script with a
+# path argument got `unknown option`, usage on stderr, and `exit 2`.
+parse_args() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --with-dotfiles)
+        with_dotfiles=1
+        shift
+        ;;
+      --install-apt)
+        install_apt=1
+        shift
+        ;;
+      --skip-apt)
+        install_apt=0
+        shift
+        ;;
+      --skip-editors)
+        install_editors=0
+        shift
+        ;;
+      --skip-omp)
+        install_omp_harness=0
+        shift
+        ;;
+      --minimal)
+        dotfiles_args="$dotfiles_args --minimal"
+        install_editors=0
+        shift
+        ;;
+      --no-packages)
+        dotfiles_args="$dotfiles_args --no-packages"
+        shift
+        ;;
+      -h | --help)
+        usage
+        exit 0
+        ;;
+      *)
+        printf 'unknown option: %s\n' "$1" >&2
+        usage
+        exit 2
+        ;;
+    esac
+  done
+}
 
-repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+# `$0` IS THE CALLER'S when this file is sourced, not this file's, so a sourced run would
+# resolve `repo_dir` against whatever shell sourced it. `DOTFILES_AGENT_SCRIPT` names this
+# script explicitly for that case; executing it normally leaves `$0` correct and the
+# override unset.
+repo_dir=$(CDPATH='' cd -- "$(dirname -- "${DOTFILES_AGENT_SCRIPT:-$0}")/.." && pwd -P)
 
 info() {
   printf '%s\n' "$*"
@@ -81,7 +91,29 @@ have() {
   command -v "$1" >/dev/null 2>&1
 }
 
-require_ubuntu() {
+# WHICH PLATFORM THIS RUN IS ON, decided once and read by everything below that differs.
+# `linux` covers the sandboxes this script was written for; `macos` covers a workstation
+# provisioned the same way. Anything else keeps the old refusal, because a third platform
+# would take a third set of package names nobody has written.
+PLATFORM='linux'
+
+detect_platform() {
+  case "$(uname -s)" in
+    Darwin)
+      PLATFORM='macos'
+      have brew || {
+        printf 'macOS setup needs Homebrew; install it from https://brew.sh first\n' >&2
+        exit 1
+      }
+      return 0
+      ;;
+    Linux) ;;
+    *)
+      printf 'agent setup targets Ubuntu or macOS; found %s\n' "$(uname -s)" >&2
+      exit 1
+      ;;
+  esac
+
   if [ ! -r /etc/os-release ]; then
     info "warning: cannot identify OS; continuing conservatively"
     return 0
@@ -325,6 +357,17 @@ install_helix() {
     return 0
   fi
 
+  # macOS has a maintained formula, so neither the PPA nor the `-linux` release asset below
+  # is reachable or wanted here.
+  if [ "$PLATFORM" = macos ]; then
+    brew install helix >/dev/null 2>&1 || true
+    hash -r 2>/dev/null || true
+    have hx || {
+      printf 'brew could not install helix; install it and rerun\n' >&2
+      return 1
+    }
+    return 0
+  fi
   # Ubuntu 24.04 has no helix package in the default archive; the PPA is the maintained
   # route and the release tarball is the fallback when adding a PPA is not possible.
   if have add-apt-repository && [ "$install_apt" -eq 1 ] && have sudo; then
@@ -664,6 +707,18 @@ install_github_cli() {
     return 0
   fi
 
+  if [ "$PLATFORM" = macos ]; then
+    brew install gh >/dev/null 2>&1 || true
+    hash -r 2>/dev/null || true
+    # NOT deferred to the healthcheck, which only prints: it exits 0 whatever it finds, so a
+    # caller reading this script's status would be told a half-provisioned box was fine.
+    have gh || {
+      printf 'brew could not install gh; install it and rerun\n' >&2
+      return 1
+    }
+    return 0
+  fi
+
   if [ "$install_apt" -eq 0 ]; then
     info "gh not found; rerun without --skip-apt to install GitHub CLI"
     return 0
@@ -800,8 +855,7 @@ link_skill_dir() {
 }
 
 install_skill_links_from_repo() {
-  skill_repo_dir=$1
-  skills_root=$2
+  skills_root=$1
 
   [ -d "$skills_root" ] || return 0
 
@@ -866,9 +920,9 @@ install_copilot_skills() {
     "https://github.com/Imbad0202/academic-research-skills.git" \
     "$academic_skills_repo"
 
-  install_skill_links_from_repo "$custom_skills_repo" "$custom_skills_repo/memory/skills"
-  install_skill_links_from_repo "$god_skills_repo" "$god_skills_repo/memory/skills"
-  install_skill_links_from_repo "$academic_skills_repo" "$academic_skills_repo"
+  install_skill_links_from_repo "$custom_skills_repo/memory/skills"
+  install_skill_links_from_repo "$god_skills_repo/memory/skills"
+  install_skill_links_from_repo "$academic_skills_repo"
   install_superpowers_plugin
   install_ponytail_plugin
 
@@ -970,6 +1024,9 @@ run_dotfiles_install() {
     return 0
   fi
 
+  # `dotfiles_args` is an argument LIST built by `parse_args`; quoting it would pass
+  # "--minimal --no-packages" as a single argument the installer rejects.
+  # shellcheck disable=SC2086
   "$repo_dir/install.sh" $dotfiles_args
 }
 
@@ -1072,31 +1129,42 @@ PY
   info "It asks for gh, copilot, az and wandb in turn, skipping any that already hold."
 }
 
-require_ubuntu
-ensure_path_block
-apt_install_missing
-# BEFORE anything that speaks to npm. `install_omp` provisions language servers from the
-# registry and used to run four lines above the only caller of this function, so on a
-# corporate box the servers were fetched from a registry that answers nothing and the
-# mirror was selected afterwards, for the next run. Ordering was the whole bug.
-ensure_npm_registry
-install_uv
-install_pre_commit
-install_wandb
-install_nvitop
-install_bpytop
-ensure_fd_shim
-install_fresh
-install_helix
-install_omp
-install_lint_defaults
-wire_fresh_lsp
-install_github_cli
-install_copilot_cli
-install_github_hosts
-ensure_default_identity
-ensure_github_known_host
-install_copilot_skills
-run_dotfiles_install
-install_bash_zsh_handoff
-healthcheck
+main() {
+  parse_args "$@"
+  detect_platform
+  ensure_path_block
+  apt_install_missing
+  # BEFORE anything that speaks to npm. `install_omp` provisions language servers from the
+  # registry and used to run four lines above the only caller of this function, so on a
+  # corporate box the servers were fetched from a registry that answers nothing and the
+  # mirror was selected afterwards, for the next run. Ordering was the whole bug.
+  ensure_npm_registry
+  install_uv
+  install_pre_commit
+  install_wandb
+  install_nvitop
+  install_bpytop
+  ensure_fd_shim
+  install_fresh
+  install_helix
+  install_omp
+  install_lint_defaults
+  wire_fresh_lsp
+  install_github_cli
+  install_copilot_cli
+  install_github_hosts
+  ensure_default_identity
+  ensure_github_known_host
+  install_copilot_skills
+  run_dotfiles_install
+  install_bash_zsh_handoff
+  healthcheck
+}
+
+# SOURCEABLE, so a test can call one function without provisioning the machine that runs it.
+# `$0` is the script's own path when executed and the *sourcing* shell's when sourced, so
+# comparing it against this file is what tells the two apart. A test sets DOTFILES_AGENT_LIB
+# instead, which is unambiguous and does not depend on how the shell was invoked.
+if [ -z "${DOTFILES_AGENT_LIB:-}" ]; then
+  main "$@"
+fi
