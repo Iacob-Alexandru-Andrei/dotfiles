@@ -144,8 +144,17 @@ test -e "${HOME}/.iterm2_shell_integration.zsh" && source "${HOME}/.iterm2_shell
 
 # Add the global npm bin to PATH, but only if npm actually works. Guarded so a
 # broken/absent node install doesn't spew dyld/npm errors on every shell start.
+#
+# `npm prefix -g` is the obvious way to ask and costs a measured 75 ms of every
+# interactive shell -- it boots node to print a path that is already implied by
+# where npm itself lives. `${commands[npm]}` is the path zsh already resolved
+# for the guard above, and `:h:h` walks it up past `bin/` to the same prefix.
+# Verified equal to `npm prefix -g` on both a Homebrew node (/opt/homebrew) and
+# an unpacked tarball under ~/.local/opt, which are the two shapes this repo
+# installs. A node whose npm is NOT at <prefix>/bin/npm would disagree, and the
+# `-d` test below is what keeps that case harmless rather than wrong.
 if (( ${+commands[npm]} )); then
-  npm_global_bin="$(npm prefix -g 2>/dev/null)/bin"
+  npm_global_bin="${commands[npm]:h:h}/bin"
   [[ -d "$npm_global_bin" ]] && export PATH="$npm_global_bin:$PATH"
   unset npm_global_bin
 fi
