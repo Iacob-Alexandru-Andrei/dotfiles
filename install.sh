@@ -72,6 +72,11 @@ link_file "$repo_dir/zsh/.zshrc" "$HOME/.zshrc"
 link_file "$repo_dir/zim/.zimrc" "$HOME/.zimrc"
 link_file "$repo_dir/tmux/.tmux.conf" "$HOME/.tmux.conf"
 
+# `pbcopy` over OSC 52, so a pipe on any host reaches THIS terminal's clipboard.
+# Linked rather than copied: a `git pull` updates it everywhere it was installed.
+mkdir -p "$HOME/.local/bin"
+link_file "$repo_dir/bin/pbcopy" "$HOME/.local/bin/pbcopy"
+
 # Install the Ghostty terminfo so this machine renders inbound SSH sessions from
 # a Ghostty terminal (TERM=xterm-ghostty) correctly. Without it the remote line
 # editor miscomputes the cursor and the display looks doubled/garbled.
@@ -346,7 +351,7 @@ install_omp() {
   done
 
   info 'Installing omp harness (language servers, gates, agents, skills)'
-  if sh "$omp_repo/bin/install.sh"; then
+  if bash "$omp_repo/bin/install.sh"; then
     # The launcher, so `omp` works from any directory. A symlink rather than a copy: it
     # resolves its own location to find the profile, and it refuses to exec itself, so
     # reaching it through `PATH` is safe.

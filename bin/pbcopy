@@ -1,0 +1,9 @@
+#!/bin/sh
+# Copy stdin to the TERMINAL's clipboard with OSC 52.
+#
+# The escape rides the TTY, so this crosses ssh, sudo and containers with no
+# daemon, no X11 and nothing installed on the far end.
+#
+# In tmux: needs `set -g set-clipboard on` (this repo's .tmux.conf sets it).
+# Payloads over ~74 KB are dropped silently by most terminals.
+printf "\033]52;c;%s\a" "$(base64 | tr -d '\n')" >/dev/tty
