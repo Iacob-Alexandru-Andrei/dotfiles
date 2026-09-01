@@ -1147,14 +1147,21 @@ main() {
   ensure_fd_shim
   install_fresh
   install_helix
-  install_omp
-  install_lint_defaults
-  wire_fresh_lsp
   install_github_cli
   install_copilot_cli
   install_github_hosts
   ensure_default_identity
   ensure_github_known_host
+  # AFTER the GitHub SSH alias, key, and known_hosts above. `install_omp` clones over
+  # `git@github-personal:`, which is an alias `install_github_hosts` writes -- running it
+  # first meant a fresh host resolved `github-personal` as a DNS name, and every new box
+  # got "Could not resolve hostname github-personal" and no harness. Existing hosts hid
+  # the bug: they already had the block from an earlier run.
+  install_omp
+  # Both read what `install_omp` just provisioned, so they follow it rather than the
+  # slot it used to occupy.
+  install_lint_defaults
+  wire_fresh_lsp
   install_copilot_skills
   run_dotfiles_install
   install_bash_zsh_handoff
