@@ -18,6 +18,10 @@ want_mesh=0
 mesh_key=''
 mesh_begin='# BEGIN dotfiles sandbox mesh'
 mesh_end='# END dotfiles sandbox mesh'
+# Written by the reverse-tunnel setup, not by this script -- named here only so the mesh
+# block can be placed below them instead of on top of them.
+tunnel_begin='# BEGIN sandbox reverse-tunnel routes'
+tunnel_end='# END sandbox reverse-tunnel routes'
 
 # The key each account signs with here, so neither has to be typed. An explicit
 # --personal-key/--work-key still wins; this is the answer when nothing is given.
@@ -298,16 +302,25 @@ touch \"\$config\"
 # before the new text was complete, so an interruption there costs you the file.
 next=\"\$config.mesh.\$\$\"
 trap 'rm -f \"\$next\"' EXIT INT TERM
-# The block goes FIRST. ssh takes the first value it sees for HostName, User, and
-# IdentitiesOnly, so a hand-added \`Host sandbox_2\` earlier in the file would decide where
-# the connection goes and this block would only be consulted for what that one omitted.
-# Found live: an unmanaged block pinned sandbox_2 to a bare 10.209.224.153 while this one
-# names GCRSANDBOX443.redmond.corp.microsoft.com -- the IP wins until the IP moves.
+# The reverse-tunnel routes go ABOVE the mesh block, and only they do. This block names
+# every sandbox by corpnet FQDN, which is right from a corpnet host and unresolvable from
+# an Azure one -- those reach the corp boxes through a reverse tunnel pinned to
+# localhost:<port>. Since ssh keeps the first HostName it sees, prepending the mesh block
+# ahead of the tunnel routes silently rewrote them onto a name that does not resolve.
+# Found live on sandbox_a100: \`ssh -G sandbox_4_a6000\` reported the tunnel's port 2244
+# with the FQDN as its host, and every corp-bound hop failed with \"Name or service not
+# known\" while both tunnels were up and listening.
 {
+  awk -v b='$tunnel_begin' -v e='$tunnel_end' '\$0 == b { keep = 1 } keep { print } \$0 == e { keep = 0 }' \"\$config\"
   printf '%s\n' '$mesh_begin'
   cat
   printf '%s\n' '$mesh_end'
-  awk -v b='$mesh_begin' -v e='$mesh_end' '\$0 == b { skip = 1; next } \$0 == e { skip = 0; next } !skip { print }' \"\$config\"
+  # Both managed blocks are stripped from the carried-over remainder: the tunnel one
+  # because it was re-emitted above, the mesh one because it is being replaced.
+  awk -v b='$mesh_begin' -v e='$mesh_end' -v tb='$tunnel_begin' -v te='$tunnel_end' '
+    \$0 == b || \$0 == tb { skip = 1; next }
+    \$0 == e || \$0 == te { skip = 0; next }
+    !skip { print }' \"\$config\"
 } > \"\$next\"
 chmod 600 \"\$next\"
 mv \"\$next\" \"\$config\""
