@@ -596,6 +596,13 @@ install_omp() {
     ln -sf "$omp_dir/bin/omp" "$HOME/.local/bin/omp"
   fi
 
+  # The second agent, linked on the same terms and for the same reason. `bin/codex`
+  # launches stock codex through the Copilot bridge; the harness itself is omp's alone.
+  if [ -x "$omp_dir/bin/codex" ]; then
+    mkdir -p "$HOME/.local/bin"
+    ln -sf "$omp_dir/bin/codex" "$HOME/.local/bin/codex"
+  fi
+
   info "installing omp harness and its language servers"
   ( cd "$omp_dir" && ./bin/install.sh ) || {
     info "omp install.sh failed; language servers may be missing"
