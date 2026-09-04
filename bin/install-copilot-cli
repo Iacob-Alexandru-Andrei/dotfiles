@@ -64,7 +64,10 @@ if [ ! -x "$copilot_bin" ]; then
 fi
 
 mkdir -p "$HOME/.copilot"
-cp "$allowlist" "$HOME/.copilot/models.allowlist"
+installed_allowlist="$HOME/.copilot/models.allowlist"
+if [ "$allowlist" != "$installed_allowlist" ]; then
+  cp "$allowlist" "$installed_allowlist"
+fi
 default_model=$(sed -n '/^[[:space:]]*#/d; /^[[:space:]]*$/d; 1p' "$allowlist")
 python3 - "$HOME/.copilot/settings.json" "$default_model" <<'PY'
 import json

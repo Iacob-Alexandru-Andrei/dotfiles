@@ -226,6 +226,12 @@ grep -q '"model": "claude-opus-5"' "$copilot_home/.copilot/settings.json" ||
 cmp "$repo_dir/copilot/models.allowlist" "$copilot_home/.copilot/models.allowlist" >/dev/null ||
   fail "Copilot installer must install the declared model allowlist intact"
 
+HOME="$copilot_home" PATH="$copilot_bin_dir:/usr/bin:/bin" \
+  COPILOT_CALL_LOG="$copilot_log" COPILOT_INSTALL_LOG="$install_log" \
+  COPILOT_MODEL_ALLOWLIST="$copilot_home/.copilot/models.allowlist" \
+  "$repo_dir/bin/install-copilot-cli" >/dev/null ||
+  fail "Copilot installer must accept the installed allowlist as its source"
+
 rm "$copilot_home/.judge_copilot_token"
 if HOME="$copilot_home" PATH="$copilot_bin_dir:/usr/bin:/bin" \
   COPILOT_CALL_LOG="$copilot_log" COPILOT_INSTALL_LOG="$install_log" \
