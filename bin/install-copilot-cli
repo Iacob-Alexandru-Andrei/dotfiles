@@ -4,9 +4,12 @@ set -eu
 prefix=${COPILOT_PREFIX:-"$HOME/.local"}
 copilot_bin="$prefix/bin/copilot"
 
+export PATH="$prefix/bin:$PATH"
 export COPILOT_AUTO_UPDATE=true
 for profile_file in "$HOME/.profile" "$HOME/.zshenv"; do
   touch "$profile_file"
+  grep -qxF 'export PATH="$HOME/.local/bin:$PATH"' "$profile_file" ||
+    printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"' >>"$profile_file"
   grep -qxF 'export COPILOT_AUTO_UPDATE=true' "$profile_file" ||
     printf '%s\n' 'export COPILOT_AUTO_UPDATE=true' >>"$profile_file"
 done
