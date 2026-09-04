@@ -6,6 +6,7 @@ repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 setup_ref=$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD 2>/dev/null ||
   git -C "$repo_dir" rev-parse --short HEAD)
 install_args=''
+copilot_token=${COPILOT_TOKEN_FILE:-"$HOME/.judge_copilot_token"}
 
 usage() {
   cat <<'EOF' >&2
@@ -15,6 +16,9 @@ Options:
   --minimal       Run remote install.sh --minimal
   --no-packages   Run remote install.sh --no-packages
   --no-editors    Run remote install.sh --no-editors
+  --copilot-token PATH
+                  Corporate Copilot token to copy
+                  (default: ~/.judge_copilot_token)
   -h, --help      Show this help
 EOF
 }
@@ -25,6 +29,11 @@ while [ "$#" -gt 0 ]; do
     --minimal|--no-packages|--no-editors)
       install_args="$install_args $1"
       shift
+      ;;
+    --copilot-token)
+      [ "$#" -ge 2 ] || { usage; exit 2; }
+      copilot_token=$2
+      shift 2
       ;;
     -h|--help)
       usage
@@ -44,6 +53,10 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$host" ] || { usage; exit 2; }
+[ -s "$copilot_token" ] || {
+  printf 'corporate Copilot token not found: %s\n' "$copilot_token" >&2
+  exit 1
+}
 
 install_terminfo() {
   term_name=${TERM:-}
@@ -74,6 +87,12 @@ install_terminfo() {
 }
 
 install_terminfo
+
+printf 'copying corporate Copilot token to remote ~/.judge_copilot_token\n'
+scp -q "$copilot_token" "$host:.judge_copilot_token.tmp"
+ssh "$host" 'set -eu
+chmod 600 "$HOME/.judge_copilot_token.tmp"
+mv "$HOME/.judge_copilot_token.tmp" "$HOME/.judge_copilot_token"'
 
 ssh "$host" "set -eu
 if [ ! -d \"\$HOME/.dotfiles/.git\" ]; then

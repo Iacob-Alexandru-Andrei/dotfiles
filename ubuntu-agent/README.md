@@ -63,6 +63,9 @@ and the file is renamed into place so an interrupted run cannot truncate it.
 The remote installer runs GitHub's default Copilot CLI installer on every
 setup and keeps startup auto-update enabled. It removes global Copilot skills
 and skill plugins; repository-local skills remain owned by their repositories.
+The remote driver copies the protected corporate token from
+`~/.judge_copilot_token` by default, and the installer exposes it through
+`COPILOT_GITHUB_TOKEN` for keychain-free authentication.
 
 The remote installer installs missing apt packages by default using
 `sudo apt-get`. Add `--skip-apt` when you want to only report missing packages.

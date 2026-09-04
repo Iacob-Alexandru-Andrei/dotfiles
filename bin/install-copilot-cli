@@ -1,17 +1,36 @@
 #!/bin/sh
 set -eu
 
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
 prefix=${COPILOT_PREFIX:-"$HOME/.local"}
 copilot_bin="$prefix/bin/copilot"
+token_file=${COPILOT_TOKEN_FILE:-"$HOME/.judge_copilot_token"}
+allowlist=${COPILOT_MODEL_ALLOWLIST:-"$script_dir/../copilot/models.allowlist"}
+
+[ -s "$token_file" ] || {
+  printf 'corporate Copilot token is missing: %s\n' "$token_file" >&2
+  exit 1
+}
+
+[ -s "$allowlist" ] || {
+  printf 'Copilot model allowlist is missing or empty: %s\n' "$allowlist" >&2
+  exit 1
+}
+
+COPILOT_GITHUB_TOKEN=$(cat "$token_file")
+export COPILOT_GITHUB_TOKEN
 
 export PATH="$prefix/bin:$PATH"
 export COPILOT_AUTO_UPDATE=true
+token_export='if [ -r "$HOME/.judge_copilot_token" ]; then export COPILOT_GITHUB_TOKEN="$(cat "$HOME/.judge_copilot_token")"; fi'
 for profile_file in "$HOME/.profile" "$HOME/.zshenv"; do
   touch "$profile_file"
   grep -qxF 'export PATH="$HOME/.local/bin:$PATH"' "$profile_file" ||
     printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"' >>"$profile_file"
   grep -qxF 'export COPILOT_AUTO_UPDATE=true' "$profile_file" ||
     printf '%s\n' 'export COPILOT_AUTO_UPDATE=true' >>"$profile_file"
+  grep -qxF "$token_export" "$profile_file" ||
+    printf '%s\n' "$token_export" >>"$profile_file"
 done
 
 bashrc="$HOME/.bashrc"
@@ -21,9 +40,11 @@ trap 'rm -f "$bashrc_next"' EXIT INT TERM
 {
   printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"'
   printf '%s\n' 'export COPILOT_AUTO_UPDATE=true'
-  awk '
+  printf '%s\n' "$token_export"
+  awk -v token_export="$token_export" '
     $0 != "export PATH=\"$HOME/.local/bin:$PATH\"" &&
-    $0 != "export COPILOT_AUTO_UPDATE=true" { print }
+    $0 != "export COPILOT_AUTO_UPDATE=true" &&
+    $0 != token_export { print }
   ' "$bashrc"
 } >"$bashrc_next"
 mv "$bashrc_next" "$bashrc"
@@ -41,6 +62,25 @@ if [ ! -x "$copilot_bin" ]; then
   printf 'GitHub Copilot CLI was not installed at %s\n' "$copilot_bin" >&2
   exit 1
 fi
+
+mkdir -p "$HOME/.copilot"
+cp "$allowlist" "$HOME/.copilot/models.allowlist"
+default_model=$(sed -n '/^[[:space:]]*#/d; /^[[:space:]]*$/d; 1p' "$allowlist")
+python3 - "$HOME/.copilot/settings.json" "$default_model" <<'PY'
+import json
+import os
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+model = sys.argv[2]
+settings = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+settings["model"] = model
+temporary = path.with_name(f"{path.name}.tmp.{os.getpid()}")
+temporary.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+os.chmod(temporary, 0o600)
+os.replace(temporary, path)
+PY
 
 for skills_dir in "$HOME/.copilot/skills" "$HOME/.agents/skills"; do
   if [ -d "$skills_dir" ]; then

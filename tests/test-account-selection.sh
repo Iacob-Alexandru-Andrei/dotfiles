@@ -32,6 +32,9 @@ printf 'PERSONAL-PRIVATE\n' > "$driver_home/.ssh/id_ed25519_github_personal"
 printf 'PERSONAL-PUBLIC\n' > "$driver_home/.ssh/id_ed25519_github_personal.pub"
 printf 'WORK-PRIVATE\n' > "$driver_home/.ssh/id_ed25519"
 printf 'WORK-PUBLIC\n' > "$driver_home/.ssh/id_ed25519.pub"
+printf 'CORPORATE-COPILOT-TOKEN\n' > "$driver_home/.judge_copilot_token"
+COPILOT_TOKEN_FILE="$driver_home/.judge_copilot_token"
+export COPILOT_TOKEN_FILE
 
 # Recorders. `scp` is the one that matters: its two arguments are the local key and the
 # remote name, which is the whole question this file asks. `ssh` must succeed silently so
@@ -154,6 +157,8 @@ run_driver > "$transcript"
 assert_copy "$transcript" github-personal "$PERSONAL" 'no flags'
 assert_copy "$transcript" github-company '' 'no flags'
 assert_copy "$transcript" id_ed25519 "$PERSONAL" 'no flags'
+grep -q '.judge_copilot_token -> test-host:.judge_copilot_token.tmp' "$transcript" ||
+  fail 'every remote setup must copy the corporate Copilot token'
 
 # 2. --personal: the same thing, said out loud.
 run_driver --personal > "$transcript"

@@ -230,16 +230,9 @@ fi
 
 # --- Copilot ----------------------------------------------------------------------
 #
-# Through `agentic-search-omp login` rather than `copilot login`, and that is the whole
-# point of this step. The standalone CLI stores its token in a system keychain, and a
-# sandbox has none -- so it falls back to asking whether to write plaintext, and an
-# unanswered prompt leaves "Login succeeded, but the token was not saved": an
-# authentication that authenticated nothing. Observed exactly that on this host.
-#
-# The harness path never reaches that question. It runs the device flow itself, writes
-# ~/.judge_copilot_token at mode 0600, and probes the actual Copilot exchange rather
-# than trusting that a file appeared. It is also the credential omp and the endpoint
-# proxy actually read, which the CLI's config directory is not.
+# `agentic-search-omp login` owns the device flow because it can persist the token
+# safely without a system keychain. The standalone CLI reads that same protected file
+# through COPILOT_GITHUB_TOKEN, which the installer exports from shell startup files.
 if wanted copilot; then
   # CLONED, then installed. Both were once "run this yourself in another directory",
   # and both are steps a login run can simply take: the work account has just been
@@ -271,6 +264,10 @@ if wanted copilot; then
     announce 'Copilot -- one device code, then a browser'
     printf '    LOG IN AS: %s\n' "$(expected_login work)"
     agentic-search-omp login || printf '!!  copilot login did not complete\n' >&2
+  fi
+  if [ -s "$HOME/.judge_copilot_token" ]; then
+    COPILOT_GITHUB_TOKEN=$(cat "$HOME/.judge_copilot_token")
+    export COPILOT_GITHUB_TOKEN
   fi
 fi
 

@@ -68,6 +68,13 @@ installed. It also keeps Copilot's startup auto-update enabled and installs the
 OMP and Codex launchers. Global Copilot skills and skill plugins are removed;
 skills belong to the repository that uses them.
 
+Remote setup securely copies `~/.judge_copilot_token` and exposes it as
+`COPILOT_GITHUB_TOKEN`, so headless hosts authenticate as the same corporate
+Copilot account without relying on a desktop keychain. The preferred models
+are listed in `copilot/models.allowlist`; add one model ID per line. GitHub
+enterprise AI controls remain the enforcement point for preventing access to
+models outside that list.
+
 Open a new zsh session after installing:
 
 ```sh

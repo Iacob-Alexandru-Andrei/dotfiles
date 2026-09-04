@@ -16,6 +16,7 @@ install_omp_harness=1
 dotfiles_args=''
 want_mesh=0
 mesh_key=''
+copilot_token=${COPILOT_TOKEN_FILE:-"$HOME/.judge_copilot_token"}
 mesh_begin='# BEGIN dotfiles sandbox mesh'
 mesh_end='# END dotfiles sandbox mesh'
 # Written by the reverse-tunnel setup, not by this script -- named here only so the mesh
@@ -44,6 +45,8 @@ Options:
   --personal-key PATH   Personal key to copy, overriding the discovered one
   --work-key PATH       Work key to copy, overriding the discovered one
   --mesh-key PATH       Sandbox key to copy, overriding the discovered one
+  --copilot-token PATH  Corporate Copilot token to copy
+                        (default: ~/.judge_copilot_token)
   --skip-dotfiles       Do not run the normal ~/.dotfiles/install.sh on remote
   --skip-apt            Do not install missing Ubuntu packages
   --install-apt         Install missing Ubuntu packages (default; kept for compatibility)
@@ -88,6 +91,11 @@ while [ "$#" -gt 0 ]; do
       [ "$#" -ge 2 ] || { usage; exit 2; }
       work_key=$2
       want_work=1
+      shift 2
+      ;;
+    --copilot-token)
+      [ "$#" -ge 2 ] || { usage; exit 2; }
+      copilot_token=$2
       shift 2
       ;;
     --skip-dotfiles)
@@ -137,6 +145,10 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$host" ] || { usage; exit 2; }
+[ -s "$copilot_token" ] || {
+  printf 'corporate Copilot token not found: %s\n' "$copilot_token" >&2
+  exit 1
+}
 
 # Each flag selects its own account and nothing else, so `--work` is work, `--personal`
 # is personal, and typing both is what installs both. Neither given means personal,
@@ -212,6 +224,14 @@ copy_key_if_requested() {
   [ -f "$source_path" ] || {
     printf 'missing %s key: %s\n' "$label" "$source_path" >&2
     exit 1
+  }
+
+  copy_copilot_token() {
+    printf 'copying corporate Copilot token to remote ~/.judge_copilot_token\n'
+    scp -q "$copilot_token" "$host:.judge_copilot_token.tmp"
+    ssh "$host" 'set -eu
+  chmod 600 "$HOME/.judge_copilot_token.tmp"
+  mv "$HOME/.judge_copilot_token.tmp" "$HOME/.judge_copilot_token"'
   }
 
   printf 'copying %s key to remote ~/.ssh/%s\n' "$label" "$remote_name"
@@ -342,6 +362,7 @@ copy_key_if_requested "work GitHub" "$work_key" "github-company"
 # thing that script exists to avoid. Copied only when it exists locally, so a machine
 # without one is silently unaffected. `copy_key_if_requested` already writes 600.
 copy_key_if_requested "wandb api" "$([ -f "$HOME/.ssh/wandb_api_key" ] && printf '%s' "$HOME/.ssh/wandb_api_key")" "wandb_api_key"
+copy_copilot_token
 
 # `Host github.com` reads ~/.ssh/id_ed25519, so a plain git@github.com URL needs one of
 # the two to claim it. Personal takes it whenever personal was selected -- personal is

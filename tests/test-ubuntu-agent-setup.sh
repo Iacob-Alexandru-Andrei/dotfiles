@@ -32,6 +32,12 @@ grep -q 'setup_ref=' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
 grep -q 'setup_ref=' "$repo_dir/bin/install-on-host" ||
   fail "normal host installer must detect the current local ref that contains dotfiles files"
 
+grep -q 'judge_copilot_token' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
+  fail "ubuntu-agent host installer must provision the corporate Copilot token"
+
+grep -q 'judge_copilot_token' "$repo_dir/bin/install-on-host" ||
+  fail "normal host installer must provision the corporate Copilot token"
+
 grep -q -- '--skip-editors' "$repo_dir/bin/install-ubuntu-agent-on-host" ||
   fail "host installer must pass through --skip-editors"
 
@@ -169,6 +175,7 @@ mkdir -p \
   "$copilot_bin_dir" \
   "$copilot_home/.copilot/skills/remove-me" \
   "$copilot_home/.agents/skills/remove-me-too"
+printf 'CORPORATE-TOKEN\n' >"$copilot_home/.judge_copilot_token"
 cat >"$copilot_bin_dir/curl" <<'EOF'
 #!/bin/sh
 cat <<'INSTALLER'
@@ -180,6 +187,8 @@ printf '%s\n' "$*" >>"$COPILOT_CALL_LOG"
 [ "$*" = "plugins list --kind plugin --scope user --json" ] &&
   printf '%s\n' '{' '  "plugins": [' '    {' '      "name": "test-plugin"' '    }' '  ],' '  "errors": []' '}'
 [ "$1" = "--version" ] && printf 'GitHub Copilot CLI test\n'
+[ "${COPILOT_GITHUB_TOKEN:-}" = "CORPORATE-TOKEN" ] &&
+  printf 'authenticated\n' >>"$COPILOT_CALL_LOG"
 COPILOT
 chmod 755 "$PREFIX/bin/copilot"
 INSTALLER
@@ -192,6 +201,8 @@ grep -qx 'installed' "$install_log" ||
   fail "Copilot installer must run GitHub's default installer on every setup"
 grep -qx -- '--version' "$copilot_log" ||
   fail "Copilot installer must report the installed version"
+grep -qx 'authenticated' "$copilot_log" ||
+  fail "Copilot installer must authenticate from the protected corporate token"
 grep -qxF 'export PATH="$HOME/.local/bin:$PATH"' "$copilot_home/.zshenv" ||
   fail "Copilot installer must persist its user-local binary directory"
 grep -qxF 'export COPILOT_AUTO_UPDATE=true' "$copilot_home/.zshenv" ||
@@ -210,7 +221,27 @@ grep -qx 'plugins disable customize-cloud-agent --skill' "$copilot_log" ||
   fail "Copilot installer must disable the bundled customize-cloud-agent skill"
 grep -qx 'plugins disable github-pr-media --skill' "$copilot_log" ||
   fail "Copilot installer must disable the bundled github-pr-media skill"
+grep -q '"model": "claude-opus-5"' "$copilot_home/.copilot/settings.json" ||
+  fail "Copilot installer must set the first allowed model as the default"
+cmp "$repo_dir/copilot/models.allowlist" "$copilot_home/.copilot/models.allowlist" >/dev/null ||
+  fail "Copilot installer must install the declared model allowlist intact"
+
+rm "$copilot_home/.judge_copilot_token"
+if HOME="$copilot_home" PATH="$copilot_bin_dir:/usr/bin:/bin" \
+  COPILOT_CALL_LOG="$copilot_log" COPILOT_INSTALL_LOG="$install_log" \
+  "$repo_dir/bin/install-copilot-cli" >/dev/null 2>&1; then
+  fail "Copilot installer must refuse to claim authentication without a corporate token"
+fi
 rm -rf "$copilot_home"
+
+allowlist="$repo_dir/copilot/models.allowlist"
+[ -f "$allowlist" ] || fail "missing Copilot model allowlist"
+expected_models='claude-opus-5
+gpt-5.6-sol-fast
+gpt-5.6-luna'
+actual_models=$(grep -v '^[[:space:]]*#' "$allowlist" | grep -v '^[[:space:]]*$')
+[ "$actual_models" = "$expected_models" ] ||
+  fail "Copilot model allowlist must contain only Opus 5, Sol Fast, and Luna"
 
 grep -q 'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must update PATH for the current run"
