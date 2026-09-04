@@ -191,6 +191,10 @@ grep -qxF 'export PATH="$HOME/.local/bin:$PATH"' "$copilot_home/.zshenv" ||
   fail "Copilot installer must persist its user-local binary directory"
 grep -qxF 'export COPILOT_AUTO_UPDATE=true' "$copilot_home/.zshenv" ||
   fail "Copilot installer must persist startup auto-update for zsh"
+sed -n '1p' "$copilot_home/.bashrc" | grep -qxF 'export PATH="$HOME/.local/bin:$PATH"' ||
+  fail "Copilot installer must prepend its user-local binary directory for bash"
+sed -n '2p' "$copilot_home/.bashrc" | grep -qxF 'export COPILOT_AUTO_UPDATE=true' ||
+  fail "Copilot installer must prepend startup auto-update for noninteractive bash"
 [ ! -e "$copilot_home/.copilot/skills/remove-me" ] ||
   fail "Copilot installer must remove global personal skills"
 grep -qx 'plugins disable customize-cloud-agent --skill' "$copilot_log" ||

@@ -14,6 +14,21 @@ for profile_file in "$HOME/.profile" "$HOME/.zshenv"; do
     printf '%s\n' 'export COPILOT_AUTO_UPDATE=true' >>"$profile_file"
 done
 
+bashrc="$HOME/.bashrc"
+touch "$bashrc"
+bashrc_next="$bashrc.copilot.$$"
+trap 'rm -f "$bashrc_next"' EXIT INT TERM
+{
+  printf '%s\n' 'export PATH="$HOME/.local/bin:$PATH"'
+  printf '%s\n' 'export COPILOT_AUTO_UPDATE=true'
+  awk '
+    $0 != "export PATH=\"$HOME/.local/bin:$PATH\"" &&
+    $0 != "export COPILOT_AUTO_UPDATE=true" { print }
+  ' "$bashrc"
+} >"$bashrc_next"
+mv "$bashrc_next" "$bashrc"
+trap - EXIT INT TERM
+
 command -v curl >/dev/null 2>&1 || {
   printf 'curl is required to install GitHub Copilot CLI\n' >&2
   exit 1
