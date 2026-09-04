@@ -60,16 +60,9 @@ Two details are load-bearing:
 Re-running replaces the block between its markers rather than stacking copies,
 and the file is renamed into place so an interrupted run cannot truncate it.
 
-The remote installer installs Copilot skills from source repositories instead of
-copying your local `~/.copilot` directories:
-
-- universal custom skills from `git@github-personal:Iacob-Alexandru-Andrei/skills.git`
-- God-specific skills from `git@github-personal:Iacob-Alexandru-Andrei/god-skills.git`
-- academic skills from `https://github.com/Imbad0202/academic-research-skills.git`
-- Superpowers from the official Copilot plugin marketplace:
-  `superpowers@superpowers-marketplace`
-- Ponytail from the Copilot plugin marketplace:
-  `ponytail@ponytail`
+The remote installer runs GitHub's default Copilot CLI installer on every
+setup and keeps startup auto-update enabled. It removes global Copilot skills
+and skill plugins; repository-local skills remain owned by their repositories.
 
 The remote installer installs missing apt packages by default using
 `sudo apt-get`. Add `--skip-apt` when you want to only report missing packages.
@@ -126,9 +119,10 @@ Omit `--with-dotfiles` to skip the normal zsh/tmux symlink setup.
   installed. Writing only `~/.profile` left every user-space install invisible
   to exactly the caller that matters -- an agent driving the box over ssh.
 - interactive bash sessions hand off to zsh automatically
-- GitHub Copilot CLI via npm when `copilot` is missing and `npm` is available
-- Copilot skills from source repositories plus Superpowers and Ponytail from
-  Copilot plugin marketplaces
+- GitHub Copilot CLI through GitHub's default installer on every setup, with
+  startup auto-update enabled
+- no global Copilot skills or skill plugins; repository-local skills are left
+  untouched
 - SSH defaults for ordinary `github.com` remotes plus host aliases
   `github-personal` and `github-company`
 - a healthcheck for the tools above, every language server, keys, skills, and

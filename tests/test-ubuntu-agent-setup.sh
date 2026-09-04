@@ -147,32 +147,61 @@ grep -q 'ensure_github_known_host' "$repo_dir/ubuntu-agent/install.sh" ||
 grep -q 'ssh-keyscan github.com' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must fetch the GitHub SSH host key before private clones"
 
-grep -q 'install_copilot_skills' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must install Copilot skills separately"
+if grep -qE 'install_copilot_skills|academic-research-skills|superpowers@|ponytail@|\\.copilot/skills' \
+  "$repo_dir/ubuntu-agent/install.sh"; then
+  fail "ubuntu-agent installer must not install global Copilot skills or skill plugins"
+fi
 
-grep -q 'Imbad0202/academic-research-skills.git' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must install academic skills from the official source repository"
+[ -x "$repo_dir/bin/install-copilot-cli" ] ||
+  fail "missing executable bin/install-copilot-cli"
 
-grep -q 'Iacob-Alexandru-Andrei/skills.git' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must install custom skills from the source repository"
+grep -q 'https://gh.io/copilot-install' "$repo_dir/bin/install-copilot-cli" ||
+  fail "Copilot installer must use GitHub's official install script"
 
-grep -q 'Iacob-Alexandru-Andrei/god-skills.git' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must install God-specific skills from the source repository"
+grep -q 'export COPILOT_AUTO_UPDATE=true' "$repo_dir/bin/install-copilot-cli" ||
+  fail "Copilot installer must keep startup auto-update enabled"
 
-grep -q 'superpowers@superpowers-marketplace' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must install Superpowers from the official Copilot plugin marketplace"
-
-grep -q 'DietrichGebert/ponytail' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must add the Ponytail Copilot plugin marketplace"
-
-grep -q 'ponytail@ponytail' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must install Ponytail from the Copilot plugin marketplace"
-
-grep -q 'install_skill_links_from_repo' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "ubuntu-agent installer must link skill directories from cloned source repos"
+copilot_home=$(mktemp -d)
+copilot_bin_dir="$copilot_home/fake-bin"
+copilot_log="$copilot_home/copilot-calls.log"
+install_log="$copilot_home/install.log"
+mkdir -p "$copilot_bin_dir" "$copilot_home/.copilot/skills/remove-me"
+cat >"$copilot_bin_dir/curl" <<'EOF'
+#!/bin/sh
+cat <<'INSTALLER'
+printf 'installed\n' >>"$COPILOT_INSTALL_LOG"
+mkdir -p "$PREFIX/bin"
+cat >"$PREFIX/bin/copilot" <<'COPILOT'
+#!/bin/sh
+printf '%s\n' "$*" >>"$COPILOT_CALL_LOG"
+[ "$1" = "--version" ] && printf 'GitHub Copilot CLI test\n'
+COPILOT
+chmod 755 "$PREFIX/bin/copilot"
+INSTALLER
+EOF
+chmod 755 "$copilot_bin_dir/curl"
+HOME="$copilot_home" PATH="$copilot_bin_dir:/usr/bin:/bin" \
+  COPILOT_CALL_LOG="$copilot_log" COPILOT_INSTALL_LOG="$install_log" \
+  "$repo_dir/bin/install-copilot-cli" >/dev/null
+grep -qx 'installed' "$install_log" ||
+  fail "Copilot installer must run GitHub's default installer on every setup"
+grep -qx -- '--version' "$copilot_log" ||
+  fail "Copilot installer must report the installed version"
+grep -qxF 'export COPILOT_AUTO_UPDATE=true' "$copilot_home/.zshenv" ||
+  fail "Copilot installer must persist startup auto-update for zsh"
+[ ! -e "$copilot_home/.copilot/skills/remove-me" ] ||
+  fail "Copilot installer must remove global personal skills"
+grep -qx 'plugins disable customize-cloud-agent --skill' "$copilot_log" ||
+  fail "Copilot installer must disable the bundled customize-cloud-agent skill"
+grep -qx 'plugins disable github-pr-media --skill' "$copilot_log" ||
+  fail "Copilot installer must disable the bundled github-pr-media skill"
+rm -rf "$copilot_home"
 
 grep -q 'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must update PATH for the current run"
+
+grep -q 'export COPILOT_AUTO_UPDATE=true' "$repo_dir/ubuntu-agent/install.sh" ||
+  fail "ubuntu-agent installer must enable Copilot startup auto-update"
 
 grep -q 'pipx_package_installed' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must detect pipx-installed packages idempotently"
@@ -328,7 +357,7 @@ grep -q 'exec zsh' "$repo_dir/ubuntu-agent/install.sh" ||
 # The healthcheck must name what the installer now installs. It previously verified
 # `nvim` and no language server at all, which is how the live box reported green with
 # zero servers on it.
-for expected in fresh hx omp fd uv pre-commit wandb nvitop bpytop copilot; do
+for expected in fresh hx omp codex fd uv pre-commit wandb nvitop bpytop copilot; do
   grep -qE "for cmd in .*\b${expected}\b" "$repo_dir/ubuntu-agent/install.sh" ||
     fail "ubuntu-agent healthcheck must report $expected"
 done
@@ -346,23 +375,8 @@ if grep -q 'pipx install amlt\\|pip install amlt\\|uv tool install amlt' "$repo_
   fail "ubuntu-agent installer must not install AMLT yet"
 fi
 
-grep -q 'find "$skills_root" -mindepth 2 -maxdepth 2 -name SKILL.md' "$repo_dir/ubuntu-agent/install.sh" ||
-  fail "skill installer must only discover SKILL.md files, not run repo install scripts"
-
-if grep -q '"$academic_skills_repo"/install.sh' "$repo_dir/ubuntu-agent/install.sh"; then
-  fail "ubuntu-agent installer must not run academic repo install.sh"
-fi
-
 if grep -q '^  repo_dir=' "$repo_dir/ubuntu-agent/install.sh"; then
   fail "functions must not overwrite the global repo_dir used by run_dotfiles_install"
-fi
-
-if ! awk '
-  /^ *install_github_hosts$/ { github_line = NR }
-  /^ *install_copilot_skills$/ { skills_line = NR }
-  END { exit !(github_line && skills_line && github_line < skills_line) }
-' "$repo_dir/ubuntu-agent/install.sh"; then
-  fail "GitHub SSH aliases must be configured before cloning private skill repos"
 fi
 
 grep -q -- '--install-apt' "$repo_dir/ubuntu-agent/install.sh" ||
@@ -391,17 +405,20 @@ run_at=$(printf '%s\n' "$omp_body" | grep -n 'bin/install.sh )' | head -1 | cut 
 [ "$link_at" -lt "$run_at" ] ||
   fail "the omp launcher must be linked before the harness install, so a failing install still leaves a usable omp"
 
-# The npm registry must be configured BEFORE the `have copilot` early return. With
-# copilot already installed the old ordering returned first, leaving npm pointed at a
-# registry that does not answer on this network -- the run logged the mirror while the
-# box still read registry.npmjs.org.
+# Copilot installation is owned by one shared script so the macOS and Ubuntu paths
+# cannot drift onto different packages or release channels.
 copilot_body=$(sed -n '/^install_copilot_cli()/,/^}/p' "$repo_dir/ubuntu-agent/install.sh")
-reg_at=$(printf '%s\n' "$copilot_body" | grep -n 'ensure_npm_registry' | head -1 | cut -d: -f1)
-guard_at=$(printf '%s\n' "$copilot_body" | grep -n 'have copilot' | head -1 | cut -d: -f1)
-[ -n "$reg_at" ] || fail 'install_copilot_cli must configure the npm registry'
-[ -n "$guard_at" ] || fail 'install_copilot_cli must keep its have-copilot guard'
-[ "$reg_at" -lt "$guard_at" ] ||
-  fail "the npm registry must be set before the have-copilot early return"
+printf '%s\n' "$copilot_body" | grep -q 'bin/install-copilot-cli' ||
+  fail 'ubuntu-agent install_copilot_cli must use the shared installer'
+
+grep -q '^install_copilot_cli()' "$repo_dir/install.sh" ||
+  fail 'normal macOS/Linux setup must install Copilot CLI'
+
+grep -q '^ *install_copilot_cli$' "$repo_dir/install.sh" ||
+  fail 'normal setup must call install_copilot_cli'
+
+grep -q 'local/bin/codex' "$repo_dir/install.sh" ||
+  fail 'normal setup must link the Codex launcher beside OMP'
 
 # ...and before every OTHER npm consumer too, which is the half the function-local
 # assertion above cannot see. `install_omp` provisions language servers from the

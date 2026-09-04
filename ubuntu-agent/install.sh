@@ -148,6 +148,7 @@ ensure_path_block() {
   end='# END dotfiles ubuntu-agent path'
 
   export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"
+  export COPILOT_AUTO_UPDATE=true
   # Helix is the default editor everywhere: EDITOR for anything that reads it, VISUAL for
   # the richer callers, and both are what omp's Ctrl+G external-editor path consults.
   #
@@ -174,6 +175,7 @@ ensure_path_block() {
     {
       printf '%s\n' "$begin"
       printf 'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"\n'
+      printf 'export COPILOT_AUTO_UPDATE=true\n'
       # Resolved when the shell starts rather than now. This function runs BEFORE
       # `install_helix`, so a check made here would answer for a machine that does not
       # exist yet; and a bare `EDITOR=hx` would name a program that is not there if that
@@ -810,130 +812,9 @@ ensure_npm_registry() {
 }
 
 install_copilot_cli() {
-  # The registry is configured before the early return on purpose. It is a property of the
-  # machine, not of this one install: with copilot already present the old ordering
-  # returned first and left npm pointed at a registry that does not answer here, so every
-  # later `npm install`/`npm update` on that box failed. Verified live -- the run logged
-  # the mirror while `npm config get registry` still read registry.npmjs.org.
-  ensure_npm_registry
-
-  if have copilot; then
-    return 0
-  fi
-
-  if ! have npm; then
-    if [ "$install_apt" -eq 1 ]; then
-      apt_install_missing
-    fi
-
-    if ! have npm; then
-      info "npm not found; skipping Copilot CLI install"
-      return 0
-    fi
-  fi
-
-
-  info "installing GitHub Copilot CLI with npm user prefix"
-  mkdir -p "$HOME/.npm-global"
-  npm config set prefix "$HOME/.npm-global" >/dev/null
-  npm install -g @github/copilot
-}
-
-link_skill_dir() {
-  source_dir=$1
-  skill_name=$(basename -- "$source_dir")
-  target_dir="$HOME/.copilot/skills/$skill_name"
-
-  [ -f "$source_dir/SKILL.md" ] || return 0
-
-  if [ -L "$target_dir" ]; then
-    current_link=$(readlink "$target_dir")
-    if [ "$current_link" = "$source_dir" ]; then
-      return 0
-    fi
-
-    rm "$target_dir"
-  elif [ -e "$target_dir" ]; then
-    info "skipping existing Copilot skill: $target_dir"
-    return 0
-  fi
-
-  ln -s "$source_dir" "$target_dir"
-}
-
-install_skill_links_from_repo() {
-  skills_root=$1
-
-  [ -d "$skills_root" ] || return 0
-
-  find "$skills_root" -mindepth 2 -maxdepth 2 -name SKILL.md -type f | while IFS= read -r skill_file; do
-    link_skill_dir "$(dirname -- "$skill_file")"
-  done
-}
-
-install_copilot_marketplace_plugin() {
-  plugin_label=$1
-  marketplace_repo=$2
-  plugin_ref=$3
-  update_name=$4
-
-  if ! have copilot; then
-    info "copilot not found; skipping $plugin_label plugin install"
-    return 0
-  fi
-
-  info "installing $plugin_label from official Copilot plugin marketplace"
-  copilot plugin marketplace add "$marketplace_repo" >/dev/null 2>&1 || true
-  copilot plugin install "$plugin_ref" >/dev/null 2>&1 ||
-    copilot plugin update "$update_name" >/dev/null 2>&1 ||
-    info "$plugin_label plugin install/update did not complete; run: copilot plugin install $plugin_ref"
-}
-
-install_superpowers_plugin() {
-  install_copilot_marketplace_plugin \
-    "Superpowers" \
-    "obra/superpowers-marketplace" \
-    "superpowers@superpowers-marketplace" \
-    "superpowers"
-}
-
-install_ponytail_plugin() {
-  install_copilot_marketplace_plugin \
-    "Ponytail" \
-    "DietrichGebert/ponytail" \
-    "ponytail@ponytail" \
-    "ponytail"
-}
-
-install_copilot_skills() {
-  source_root="$HOME/.local/share/dotfiles-agent"
-  custom_skills_repo="$source_root/skills"
-  god_skills_repo="$source_root/god-skills"
-  academic_skills_repo="$source_root/academic-research-skills"
-
-  mkdir -p "$HOME/.copilot/skills" "$source_root"
-
-  clone_or_update_repo \
-    "git@github-personal:Iacob-Alexandru-Andrei/skills.git" \
-    "$custom_skills_repo" ||
-    info "custom skills repo clone failed; check github-personal SSH auth"
-
-  clone_or_update_repo \
-    "git@github-personal:Iacob-Alexandru-Andrei/god-skills.git" \
-    "$god_skills_repo" ||
-    info "God-specific skills repo clone failed; check github-personal SSH auth"
-
-  clone_or_update_repo \
-    "https://github.com/Imbad0202/academic-research-skills.git" \
-    "$academic_skills_repo"
-
-  install_skill_links_from_repo "$custom_skills_repo/memory/skills"
-  install_skill_links_from_repo "$god_skills_repo/memory/skills"
-  install_skill_links_from_repo "$academic_skills_repo"
-  install_superpowers_plugin
-  install_ponytail_plugin
-
-  info "Copilot skills directory: $HOME/.copilot/skills"
+  info "installing or updating GitHub Copilot CLI"
+  "$repo_dir/bin/install-copilot-cli" ||
+    info "Copilot CLI install/update failed; re-run $repo_dir/bin/install-copilot-cli"
 }
 
 install_github_hosts() {
@@ -1068,7 +949,7 @@ healthcheck() {
   info "ubuntu-agent healthcheck"
   # `fd` as well as `fdfind`: Ubuntu ships the binary as fd-find and the README promises
   # `fd`, so checking only the packaged name hid a gap the shim now closes.
-  for cmd in git curl jq rg fd fdfind tmux zsh python3 uv pre-commit wandb nvitop bpytop npm copilot gh az amlt fresh hx omp; do
+  for cmd in git curl jq rg fd fdfind tmux zsh python3 uv pre-commit wandb nvitop bpytop npm copilot gh az amlt fresh hx omp codex; do
     if have "$cmd"; then
       printf '  ok      %s\n' "$cmd"
     else
@@ -1169,7 +1050,6 @@ main() {
   # slot it used to occupy.
   install_lint_defaults
   wire_fresh_lsp
-  install_copilot_skills
   run_dotfiles_install
   install_bash_zsh_handoff
   healthcheck

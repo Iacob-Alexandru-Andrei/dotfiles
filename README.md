@@ -62,6 +62,12 @@ git clone https://github.com/Iacob-Alexandru-Andrei/dotfiles.git ~/.dotfiles
 ~/.dotfiles/install.sh
 ```
 
+The full installer runs GitHub's default Copilot CLI installer on every setup,
+so an existing installation is updated as well as a missing one being
+installed. It also keeps Copilot's startup auto-update enabled and installs the
+OMP and Codex launchers. Global Copilot skills and skill plugins are removed;
+skills belong to the repository that uses them.
+
 Open a new zsh session after installing:
 
 ```sh

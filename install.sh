@@ -5,7 +5,7 @@ set -eu
 # - Symlinks zsh / zim / tmux configs (always).
 # - Installs modern CLI tools the configs expect (zoxide, fzf, eza, bat, ...).
 # - Installs helix (the default editor) and fresh.
-# - Installs the omp coding harness and its Copilot endpoint.
+# - Installs Copilot CLI, plus the omp and Codex launchers.
 #
 # Usage:
 #   ./install.sh                full setup (symlinks + packages + editors + omp)
@@ -290,7 +290,16 @@ install_helix() {
 }
 
 # --------------------------------------------------------------------------
-# omp coding harness + Copilot endpoint
+# GitHub Copilot CLI
+# --------------------------------------------------------------------------
+install_copilot_cli() {
+  info 'Installing or updating GitHub Copilot CLI'
+  "$repo_dir/bin/install-copilot-cli" ||
+    warn "Copilot CLI install/update failed; re-run $repo_dir/bin/install-copilot-cli"
+}
+
+# --------------------------------------------------------------------------
+# omp coding harness + Codex launcher + Copilot endpoint
 # --------------------------------------------------------------------------
 # ONE COMMAND, because `omp/bin/install.sh` already installs both. It provisions
 # the pinned runtime, nine language servers, fifteen gate tools, the agents and
@@ -356,6 +365,7 @@ install_omp() {
     # resolves its own location to find the profile, and it refuses to exec itself, so
     # reaching it through `PATH` is safe.
     ln -sfn "$omp_repo/bin/omp" "$HOME/.local/bin/omp"
+    ln -sfn "$omp_repo/bin/codex" "$HOME/.local/bin/codex"
     OMP_STATUS='installed'
   else
     OMP_STATUS='FAILED: see the harness output above'
@@ -366,7 +376,10 @@ install_omp() {
 # --------------------------------------------------------------------------
 # Run
 # --------------------------------------------------------------------------
-[ "$INSTALL_PACKAGES" -eq 1 ] && install_packages
+if [ "$INSTALL_PACKAGES" -eq 1 ]; then
+  install_packages
+  install_copilot_cli
+fi
 if [ "$INSTALL_EDITORS" -eq 1 ]; then
   install_fresh
   install_helix

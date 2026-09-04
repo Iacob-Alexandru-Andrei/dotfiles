@@ -1,0 +1,38 @@
+#!/bin/sh
+set -eu
+
+prefix=${COPILOT_PREFIX:-"$HOME/.local"}
+copilot_bin="$prefix/bin/copilot"
+
+export COPILOT_AUTO_UPDATE=true
+for profile_file in "$HOME/.profile" "$HOME/.zshenv"; do
+  touch "$profile_file"
+  grep -qxF 'export COPILOT_AUTO_UPDATE=true' "$profile_file" ||
+    printf '%s\n' 'export COPILOT_AUTO_UPDATE=true' >>"$profile_file"
+done
+
+command -v curl >/dev/null 2>&1 || {
+  printf 'curl is required to install GitHub Copilot CLI\n' >&2
+  exit 1
+}
+
+printf 'installing or updating GitHub Copilot CLI in %s\n' "$prefix"
+curl -fsSL https://gh.io/copilot-install | PREFIX="$prefix" bash
+
+if [ ! -x "$copilot_bin" ]; then
+  printf 'GitHub Copilot CLI was not installed at %s\n' "$copilot_bin" >&2
+  exit 1
+fi
+
+skills_dir="$HOME/.copilot/skills"
+if [ -d "$skills_dir" ]; then
+  find "$skills_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+fi
+
+"$copilot_bin" plugin uninstall ponytail@ponytail >/dev/null 2>&1 || true
+"$copilot_bin" plugin uninstall superpowers@superpowers-marketplace >/dev/null 2>&1 || true
+"$copilot_bin" plugin marketplace remove ponytail >/dev/null 2>&1 || true
+"$copilot_bin" plugin marketplace remove superpowers-marketplace >/dev/null 2>&1 || true
+"$copilot_bin" plugins disable customize-cloud-agent --skill >/dev/null 2>&1 || true
+"$copilot_bin" plugins disable github-pr-media --skill >/dev/null 2>&1 || true
+"$copilot_bin" --version
