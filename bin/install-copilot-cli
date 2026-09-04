@@ -42,13 +42,20 @@ if [ ! -x "$copilot_bin" ]; then
   exit 1
 fi
 
-skills_dir="$HOME/.copilot/skills"
-if [ -d "$skills_dir" ]; then
-  find "$skills_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-fi
+for skills_dir in "$HOME/.copilot/skills" "$HOME/.agents/skills"; do
+  if [ -d "$skills_dir" ]; then
+    find "$skills_dir" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  fi
+done
 
-"$copilot_bin" plugin uninstall ponytail@ponytail >/dev/null 2>&1 || true
-"$copilot_bin" plugin uninstall superpowers@superpowers-marketplace >/dev/null 2>&1 || true
+plugin_names=$(
+  "$copilot_bin" plugins list --kind plugin --scope user --json 2>/dev/null |
+    sed -n 's/^[[:space:]]*"name":[[:space:]]*"\([^"]*\)",*$/\1/p'
+)
+for plugin_name in $plugin_names; do
+  "$copilot_bin" plugin uninstall "$plugin_name" >/dev/null 2>&1 || true
+done
+
 "$copilot_bin" plugin marketplace remove ponytail >/dev/null 2>&1 || true
 "$copilot_bin" plugin marketplace remove superpowers-marketplace >/dev/null 2>&1 || true
 "$copilot_bin" plugins disable customize-cloud-agent --skill >/dev/null 2>&1 || true

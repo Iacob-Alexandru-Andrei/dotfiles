@@ -165,7 +165,10 @@ copilot_home=$(mktemp -d)
 copilot_bin_dir="$copilot_home/fake-bin"
 copilot_log="$copilot_home/copilot-calls.log"
 install_log="$copilot_home/install.log"
-mkdir -p "$copilot_bin_dir" "$copilot_home/.copilot/skills/remove-me"
+mkdir -p \
+  "$copilot_bin_dir" \
+  "$copilot_home/.copilot/skills/remove-me" \
+  "$copilot_home/.agents/skills/remove-me-too"
 cat >"$copilot_bin_dir/curl" <<'EOF'
 #!/bin/sh
 cat <<'INSTALLER'
@@ -174,6 +177,8 @@ mkdir -p "$PREFIX/bin"
 cat >"$PREFIX/bin/copilot" <<'COPILOT'
 #!/bin/sh
 printf '%s\n' "$*" >>"$COPILOT_CALL_LOG"
+[ "$*" = "plugins list --kind plugin --scope user --json" ] &&
+  printf '%s\n' '{' '  "plugins": [' '    {' '      "name": "test-plugin"' '    }' '  ],' '  "errors": []' '}'
 [ "$1" = "--version" ] && printf 'GitHub Copilot CLI test\n'
 COPILOT
 chmod 755 "$PREFIX/bin/copilot"
@@ -197,6 +202,10 @@ sed -n '2p' "$copilot_home/.bashrc" | grep -qxF 'export COPILOT_AUTO_UPDATE=true
   fail "Copilot installer must prepend startup auto-update for noninteractive bash"
 [ ! -e "$copilot_home/.copilot/skills/remove-me" ] ||
   fail "Copilot installer must remove global personal skills"
+[ ! -e "$copilot_home/.agents/skills/remove-me-too" ] ||
+  fail "Copilot installer must remove shared global agent skills"
+grep -qx 'plugin uninstall test-plugin' "$copilot_log" ||
+  fail "Copilot installer must remove every user-scoped plugin"
 grep -qx 'plugins disable customize-cloud-agent --skill' "$copilot_log" ||
   fail "Copilot installer must disable the bundled customize-cloud-agent skill"
 grep -qx 'plugins disable github-pr-media --skill' "$copilot_log" ||
