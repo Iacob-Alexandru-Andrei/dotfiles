@@ -161,6 +161,9 @@ fi
 [ -x "$repo_dir/bin/install-copilot-cli" ] ||
   fail "missing executable bin/install-copilot-cli"
 
+[ -x "$repo_dir/bin/copilot" ] ||
+  fail "missing executable model-policy Copilot launcher"
+
 grep -q 'https://gh.io/copilot-install' "$repo_dir/bin/install-copilot-cli" ||
   fail "Copilot installer must use GitHub's official install script"
 
@@ -225,6 +228,10 @@ grep -q '"model": "claude-opus-5"' "$copilot_home/.copilot/settings.json" ||
   fail "Copilot installer must set the first allowed model as the default"
 cmp "$repo_dir/copilot/models.allowlist" "$copilot_home/.copilot/models.allowlist" >/dev/null ||
   fail "Copilot installer must install the declared model allowlist intact"
+[ "$(readlink "$copilot_home/.local/bin/copilot")" = "$repo_dir/bin/copilot" ] ||
+  fail "Copilot installer must put the policy launcher on PATH"
+[ "$(readlink "$copilot_home/.github/allowed_models.txt")" = "$copilot_home/.copilot/models.allowlist" ] ||
+  fail "Copilot installer must enforce the policy for non-repository sessions"
 
 HOME="$copilot_home" PATH="$copilot_bin_dir:/usr/bin:/bin" \
   COPILOT_CALL_LOG="$copilot_log" COPILOT_INSTALL_LOG="$install_log" \
@@ -244,10 +251,41 @@ allowlist="$repo_dir/copilot/models.allowlist"
 [ -f "$allowlist" ] || fail "missing Copilot model allowlist"
 expected_models='claude-opus-5
 gpt-5.6-sol-fast
-gpt-5.6-luna'
+gpt-5.6-luna
+fallback: claude-opus-5'
 actual_models=$(grep -v '^[[:space:]]*#' "$allowlist" | grep -v '^[[:space:]]*$')
 [ "$actual_models" = "$expected_models" ] ||
   fail "Copilot model allowlist must contain only Opus 5, Sol Fast, and Luna"
+
+wrapper_home=$(mktemp -d)
+wrapper_repo="$wrapper_home/repo"
+wrapper_log="$wrapper_home/real.log"
+mkdir -p "$wrapper_home/.copilot" "$wrapper_home/.local/libexec/copilot/bin" "$wrapper_repo"
+cp "$repo_dir/copilot/models.allowlist" "$wrapper_home/.copilot/models.allowlist"
+cat >"$wrapper_home/.local/libexec/copilot/bin/copilot" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$COPILOT_WRAPPER_LOG"
+EOF
+chmod 755 "$wrapper_home/.local/libexec/copilot/bin/copilot"
+git -C "$wrapper_repo" init -q
+HOME="$wrapper_home" COPILOT_WRAPPER_LOG="$wrapper_log" \
+  "$repo_dir/bin/copilot" -C "$wrapper_repo" --version
+[ "$(readlink "$wrapper_repo/.github/allowed_models.txt")" = "$wrapper_home/.copilot/models.allowlist" ] ||
+  fail "Copilot launcher must install the native policy into each repository"
+grep -qxF '/.github/allowed_models.txt' "$wrapper_repo/.git/info/exclude" ||
+  fail "Copilot launcher must keep its generated repository policy out of Git"
+[ -z "$(git -C "$wrapper_repo" status --porcelain)" ] ||
+  fail "Copilot launcher's generated policy must be invisible to Git status"
+grep -qx -- "-C $wrapper_repo --version" "$wrapper_log" ||
+  fail "Copilot launcher must preserve arguments to the real CLI"
+printf '%s\n' 'claude-sonnet-5' >"$wrapper_repo/.github/different-policy"
+rm "$wrapper_repo/.github/allowed_models.txt"
+mv "$wrapper_repo/.github/different-policy" "$wrapper_repo/.github/allowed_models.txt"
+if HOME="$wrapper_home" COPILOT_WRAPPER_LOG="$wrapper_log" \
+  "$repo_dir/bin/copilot" -C "$wrapper_repo" --version >/dev/null 2>&1; then
+  fail "Copilot launcher must refuse a repository policy that widens the allowlist"
+fi
+rm -rf "$wrapper_home"
 
 grep -q 'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"' "$repo_dir/ubuntu-agent/install.sh" ||
   fail "ubuntu-agent installer must update PATH for the current run"

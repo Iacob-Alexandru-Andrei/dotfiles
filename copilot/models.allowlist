@@ -1,3 +1,4 @@
 claude-opus-5
 gpt-5.6-sol-fast
 gpt-5.6-luna
+fallback: claude-opus-5

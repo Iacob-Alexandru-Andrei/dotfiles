@@ -71,9 +71,12 @@ skills belong to the repository that uses them.
 Remote setup securely copies `~/.judge_copilot_token` and exposes it as
 `COPILOT_GITHUB_TOKEN`, so headless hosts authenticate as the same corporate
 Copilot account without relying on a desktop keychain. The preferred models
-are listed in `copilot/models.allowlist`; add one model ID per line. GitHub
-enterprise AI controls remain the enforcement point for preventing access to
-models outside that list.
+are listed in `copilot/models.allowlist`; add one model ID per line and keep
+the final `fallback:` entry on an allowed model. The `copilot` launcher places
+that native policy into each repository as an ignored symlink before starting
+the real CLI. Disallowed session models are refused, and disallowed subagent
+overrides are clamped to the fallback. A repository carrying a different
+policy fails closed instead of widening the fleet policy.
 
 Open a new zsh session after installing:
 

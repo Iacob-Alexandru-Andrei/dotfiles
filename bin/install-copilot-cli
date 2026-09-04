@@ -2,10 +2,11 @@
 set -eu
 
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd -P)
-prefix=${COPILOT_PREFIX:-"$HOME/.local"}
+prefix=${COPILOT_PREFIX:-"$HOME/.local/libexec/copilot"}
 copilot_bin="$prefix/bin/copilot"
 token_file=${COPILOT_TOKEN_FILE:-"$HOME/.judge_copilot_token"}
 allowlist=${COPILOT_MODEL_ALLOWLIST:-"$script_dir/../copilot/models.allowlist"}
+wrapper=${COPILOT_WRAPPER:-"$script_dir/copilot"}
 
 [ -s "$token_file" ] || {
   printf 'corporate Copilot token is missing: %s\n' "$token_file" >&2
@@ -14,6 +15,11 @@ allowlist=${COPILOT_MODEL_ALLOWLIST:-"$script_dir/../copilot/models.allowlist"}
 
 [ -s "$allowlist" ] || {
   printf 'Copilot model allowlist is missing or empty: %s\n' "$allowlist" >&2
+  exit 1
+}
+
+[ -x "$wrapper" ] || {
+  printf 'Copilot policy wrapper is missing or not executable: %s\n' "$wrapper" >&2
   exit 1
 }
 
@@ -68,6 +74,9 @@ installed_allowlist="$HOME/.copilot/models.allowlist"
 if [ "$allowlist" != "$installed_allowlist" ]; then
   cp "$allowlist" "$installed_allowlist"
 fi
+mkdir -p "$HOME/.github" "$HOME/.local/bin"
+ln -sfn "$installed_allowlist" "$HOME/.github/allowed_models.txt"
+ln -sfn "$wrapper" "$HOME/.local/bin/copilot"
 default_model=$(sed -n '/^[[:space:]]*#/d; /^[[:space:]]*$/d; 1p' "$allowlist")
 python3 - "$HOME/.copilot/settings.json" "$default_model" <<'PY'
 import json

@@ -1,0 +1,55 @@
+#!/bin/sh
+set -eu
+
+real_bin=${COPILOT_REAL_BIN:-"$HOME/.local/libexec/copilot/bin/copilot"}
+allowlist=${COPILOT_MODEL_ALLOWLIST:-"$HOME/.copilot/models.allowlist"}
+
+[ -x "$real_bin" ] || {
+  printf 'Copilot CLI is not installed at %s\n' "$real_bin" >&2
+  exit 1
+}
+
+[ -s "$allowlist" ] || {
+  printf 'Copilot model allowlist is missing or empty: %s\n' "$allowlist" >&2
+  exit 1
+}
+
+working_dir=$PWD
+previous=''
+for argument in "$@"; do
+  if [ "$previous" = '-C' ]; then
+    working_dir=$argument
+    break
+  fi
+  case "$argument" in
+    -C) previous='-C' ;;
+    -C?*) working_dir=${argument#-C}; break ;;
+  esac
+done
+
+root=$(git -C "$working_dir" rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$working_dir")
+policy="$root/.github/allowed_models.txt"
+
+if [ -e "$policy" ] || [ -L "$policy" ]; then
+  cmp -s "$allowlist" "$policy" || {
+    printf 'repository model policy differs from %s: %s\n' "$allowlist" "$policy" >&2
+    exit 1
+  }
+else
+  mkdir -p "$root/.github"
+  ln -s "$allowlist" "$policy"
+
+  if git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
+    exclude=$(git -C "$root" rev-parse --git-path info/exclude)
+    case "$exclude" in
+      /*) ;;
+      *) exclude="$root/$exclude" ;;
+    esac
+    mkdir -p "$(dirname -- "$exclude")"
+    touch "$exclude"
+    grep -qxF '/.github/allowed_models.txt' "$exclude" ||
+      printf '%s\n' '/.github/allowed_models.txt' >>"$exclude"
+  fi
+fi
+
+exec "$real_bin" "$@"

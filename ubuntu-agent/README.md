@@ -66,6 +66,9 @@ and skill plugins; repository-local skills remain owned by their repositories.
 The remote driver copies the protected corporate token from
 `~/.judge_copilot_token` by default, and the installer exposes it through
 `COPILOT_GITHUB_TOKEN` for keychain-free authentication.
+The `copilot` launcher installs the native `.github/allowed_models.txt` policy
+into each repository as an ignored symlink to the centrally provisioned list.
+Edit `copilot/models.allowlist` to extend the fleet policy.
 
 The remote installer installs missing apt packages by default using
 `sudo apt-get`. Add `--skip-apt` when you want to only report missing packages.
